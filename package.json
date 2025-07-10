@@ -1,0 +1,72 @@
+{
+  "name": "web3-client",
+  "version": "1.0.0",
+  "description": "Web3 Client - 专业浏览器自动化平台",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run build:main -- --watch\" \"npm run build:preload -- --watch\" \"npm run dev:renderer\" \"wait-on dist/main/index.js dist/preload/index.js && electron .\"",
+    "build": "npm run db:generate && npm run build:main && npm run build:preload && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:preload": "tsc -p tsconfig.preload.json",
+    "dev:renderer": "vite --port 5173",
+    "build:renderer": "vite build",
+    "test": "npm run build && cross-env NODE_ENV=production electron .",
+    "type-check": "tsc --noEmit",
+    "db:generate": "prisma generate --schema=src/main/database/schema.prisma",
+    "db:push": "prisma db push --schema=src/main/database/schema.prisma",
+    "lint": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "postinstall": "npm run db:generate && electron-builder install-app-deps",
+    "dist": "npm run build && electron-builder"
+  },
+  "keywords": [
+    "web3",
+    "browser",
+    "automation",
+    "electron"
+  ],
+  "author": "Web3 Client Team",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^5.7.1",
+    "lodash": "^4.17.21",
+    "prisma": "^5.7.1",
+    "puppeteer": "^24.12.0",
+    "puppeteer-real-browser": "^1.4.2",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.202",
+    "@types/node": "^20.10.5",
+    "@types/puppeteer": "^7.0.4",
+    "@types/uuid": "^9.0.7",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vitejs/plugin-vue": "^4.6.2",
+    "cross-env": "^7.0.3",
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "element-plus": "^2.4.4",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10",
+    "vue": "^3.3.13",
+    "vue-tsc": "^1.8.25",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.web3client.app",
+    "productName": "Web3 Client",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ]
+  }
+}

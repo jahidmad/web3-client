@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../../../data/web3-client.db"
+}
+
+model BrowserGroup {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  browsers Browser[]
+}
+
+model Browser {
+  id          String        @id @default(uuid())
+  name        String
+  platform    String
+  status      String        @default("stopped")
+  config      String        // JSON string
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  lastUsedAt  DateTime?
+  groupId     String?
+  
+  group       BrowserGroup? @relation(fields: [groupId], references: [id])
+  executions  TaskExecution[]
+}
+
+model TaskGroup {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  tasks Task[]
+}
+
+model Task {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  script      String
+  args        String?       // JSON string
+  timeout     Int           @default(30000)
+  retryCount  Int           @default(0)
+  status      String        @default("draft")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  groupId     String?
+  
+  group       TaskGroup?    @relation(fields: [groupId], references: [id])
+  executions  TaskExecution[]
+  schedules   TaskSchedule[]
+}
+
+model TaskExecution {
+  id          String   @id @default(uuid())
+  taskId      String
+  browserId   String
+  status      String   @default("pending")
+  startTime   DateTime @default(now())
+  endTime     DateTime?
+  result      String?  // JSON string
+  error       String?
+  logs        String?  // JSON string array
+  retryCount  Int      @default(0)
+  
+  task        Task     @relation(fields: [taskId], references: [id])
+  browser     Browser  @relation(fields: [browserId], references: [id])
+}
+
+model TaskSchedule {
+  id          String   @id @default(uuid())
+  taskId      String
+  cronExpression String
+  isActive    Boolean  @default(true)
+  lastRun     DateTime?
+  nextRun     DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  task        Task     @relation(fields: [taskId], references: [id])
+}
+
+model AccountGroup {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  accounts Account[]
+}
+
+model Account {
+  id          String        @id @default(uuid())
+  name        String
+  type        String
+  platform    String
+  credentials String        // JSON string (encrypted)
+  status      String        @default("active")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  lastUsedAt  DateTime?
+  groupId     String?
+  
+  group       AccountGroup? @relation(fields: [groupId], references: [id])
+}
+
+model SystemLog {
+  id          String   @id @default(uuid())
+  timestamp   DateTime @default(now())
+  level       String
+  message     String
+  context     String?
+  metadata    String?  // JSON string
+}
+
+model SystemConfig {
+  id                    String @id @default(uuid())
+  maxConcurrentBrowsers Int    @default(10)
+  defaultTimeout        Int    @default(30000)
+  retryAttempts         Int    @default(3)
+  logLevel              String @default("info")
+  dataDirectory         String @default("./data")
+  autoCleanup           Boolean @default(true)
+  cleanupInterval       Int    @default(3600000)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
