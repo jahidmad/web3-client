@@ -3,7 +3,8 @@ export interface ProxyConfig {
   port: string;
   username?: string;
   password?: string;
-  type?: 'http' | 'https' | 'socks5';
+  type?: 'http' | 'https' | 'socks4' | 'socks5';
+  protocol?: 'http' | 'https' | 'socks4' | 'socks5';
 }
 
 export interface FingerprintConfig {
@@ -101,7 +102,9 @@ export interface BatchResult {
 export interface CreateBrowserRequest {
   name: string;
   platform: BrowserPlatform;
-  config: BrowserConfig;
+  headless?: boolean;
+  proxy?: ProxyConfig;
+  config?: BrowserConfig;
   groupId?: string;
 }
 
@@ -117,6 +120,6 @@ export interface IBrowserPlatform {
   openBrowser(browserId: string): Promise<void>;
   closeBrowser(browserId: string): Promise<void>;
   getBrowserStatus(browserId: string): Promise<BrowserStatus>;
-  deleteBrowser(browserId: string): Promise<void>;
+  deleteBrowser(browserId: string, deleteUserData?: boolean): Promise<void>;
   isAvailable(): Promise<boolean>;
 }

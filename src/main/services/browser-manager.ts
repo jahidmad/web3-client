@@ -46,11 +46,14 @@ export class BrowserManager {
   async createBrowser(request: CreateBrowserRequest): Promise<BrowserOperationResult> {
     try {
       const browserId = uuidv4();
+      
       const config: BrowserConfig = {
-        ...request.config,
         id: browserId,
         name: request.name,
-        platform: request.platform
+        platform: request.platform,
+        headless: request.headless,
+        proxy: request.proxy,
+        ...request.config  // 其他额外配置
       };
 
       const platform = this.platforms.get(request.platform);
@@ -147,7 +150,7 @@ export class BrowserManager {
     }
   }
 
-  async deleteBrowser(browserId: string): Promise<BrowserOperationResult> {
+  async deleteBrowser(browserId: string, deleteUserData: boolean = false): Promise<BrowserOperationResult> {
     try {
       const browser = this.browsers.get(browserId);
       if (!browser) {
@@ -156,7 +159,7 @@ export class BrowserManager {
 
       const platform = this.platforms.get(browser.platform);
       if (platform) {
-        await platform.deleteBrowser(browserId);
+        await platform.deleteBrowser(browserId, deleteUserData);
       }
 
       this.browsers.delete(browserId);
@@ -349,8 +352,26 @@ export class BrowserManager {
         browser.status = newStatus;
         browser.updatedAt = new Date();
         
-        // 更新数据库
-        await this.databaseService.updateBrowser(browser);
+        // 检查数据库中是否还存在该浏览器记录
+        try {
+          const dbBrowser = await this.databaseService.getBrowser(browserId);
+          if (!dbBrowser) {
+            this.logger.debug(`Browser ${browserId} not found in database, skipping update`);
+            return;
+          }
+          
+          // 更新数据库
+          await this.databaseService.updateBrowser(browser);
+        } catch (dbError: any) {
+          if (dbError.code === 'P2025' || dbError.message?.includes('Record to update not found')) {
+            // 数据库中记录不存在，可能已被删除，忽略此更新
+            this.logger.debug(`Browser ${browserId} record not found in database, skipping status update`);
+            return;
+          } else {
+            // 其他数据库错误，重新抛出
+            throw dbError;
+          }
+        }
         
         // 通知前端
         if (this.mainWindow && this.mainWindow.webContents) {
@@ -363,6 +384,8 @@ export class BrowserManager {
         }
         
         this.logger.info(`Browser ${browserId} status changed: ${oldStatus} -> ${newStatus}`);
+      } else {
+        this.logger.debug(`Browser ${browserId} not found in memory, ignoring status change to ${newStatus}`);
       }
     } catch (error) {
       this.logger.error(`Failed to handle status change for browser ${browserId}:`, error);

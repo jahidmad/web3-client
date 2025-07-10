@@ -1,6 +1,9 @@
 import { connect } from 'puppeteer-real-browser';
 import type { Browser as PuppeteerBrowser, Page } from 'puppeteer';
 import { v4 as uuidv4 } from 'uuid';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { 
   Browser, 
   BrowserConfig, 
@@ -40,6 +43,10 @@ export class LocalBrowser implements IBrowserPlatform {
     try {
       this.logger.info(`Creating local browser: ${browserConfig.name}`);
       
+      // 为每个浏览器创建唯一的用户数据目录
+      const userDataDir = await this.createUserDataDirectory(browserId, browserConfig.name);
+      browserConfig.userDataDir = userDataDir;
+      
       // 存储配置以便后续使用
       this.browsers.set(browserId, {
         browser: null,
@@ -53,11 +60,15 @@ export class LocalBrowser implements IBrowserPlatform {
         name: browserConfig.name,
         platform: 'local',
         status: 'stopped',
-        config: browserConfig,
+        config: {
+          ...browserConfig,  // 保留完整配置，包括代理
+          id: browserId,     // 确保 ID 正确
+        },
         createdAt: new Date(),
         updatedAt: new Date()
       };
 
+      this.logger.info(`Browser ${browserId} created with user data directory: ${userDataDir}`);
       return browser;
     } catch (error) {
       this.logger.error(`Failed to create browser ${browserConfig.name}:`, error);
@@ -85,7 +96,10 @@ export class LocalBrowser implements IBrowserPlatform {
       const { browser, page } = await connect({
         headless: config.headless || false,
         args,
-        turnstile: true,
+        turnstile: false,
+        customConfig: {
+          userDataDir: config.userDataDir,
+        },
         connectOption: {
           defaultViewport: config.fingerprint?.viewport || { width: 1920, height: 1080 }
         }
@@ -125,6 +139,18 @@ export class LocalBrowser implements IBrowserPlatform {
       this.updateBrowserStatus(browserId, 'stopping');
       
       if (browserData.browser && !browserData.browser.process()?.killed) {
+        // 移除事件监听器以防止在删除后触发状态更新
+        try {
+          const process = browserData.browser.process();
+          if (process) {
+            process.removeAllListeners('exit');
+            process.removeAllListeners('error');
+          }
+          browserData.browser.removeAllListeners('disconnected');
+        } catch (cleanupError) {
+          this.logger.debug(`Event listener cleanup failed for ${browserId}:`, cleanupError);
+        }
+        
         await browserData.browser.close();
       }
       
@@ -163,8 +189,52 @@ export class LocalBrowser implements IBrowserPlatform {
     }
   }
 
-  async deleteBrowser(browserId: string): Promise<void> {
+  async deleteBrowser(browserId: string, deleteUserData: boolean = true): Promise<void> {
+    // 先获取浏览器数据（在closeBrowser删除之前）
+    const browserData = this.browsers.get(browserId);
+    
+    // 关闭浏览器并清理事件监听器
     await this.closeBrowser(browserId);
+    
+    this.logger.info(`browserData: ${browserData}`)
+    
+    // 清理用户数据目录（始终删除）
+    if (browserData && browserData.config.userDataDir) {
+      try {
+        await this.removeUserDataDirectory(browserData.config.userDataDir);
+        this.logger.info(`Browser ${browserId} deleted, user data removed from: ${browserData.config.userDataDir}`);
+      } catch (error) {
+        this.logger.warn(`Failed to clean user data directory for ${browserId}:`, error);
+      }
+    }
+    
+    this.logger.info(`Browser ${browserId} deleted`);
+  }
+
+  // 完全删除浏览器和用户数据
+  async deleteBrowserWithData(browserId: string, deleteUserData: boolean = false): Promise<void> {
+    await this.closeBrowser(browserId);
+    
+    // 获取浏览器数据以便清理用户目录
+    const browserData = this.browsers.get(browserId);
+    
+    // 从内存中删除浏览器数据
+    this.browsers.delete(browserId);
+    
+    // 清理用户数据目录
+    if (browserData && browserData.config.userDataDir) {
+      try {
+        if (deleteUserData) {
+          await this.removeUserDataDirectory(browserData.config.userDataDir);
+          this.logger.info(`Browser ${browserId} and user data deleted completely`);
+        } else {
+          this.logger.info(`Browser ${browserId} deleted, user data preserved at: ${browserData.config.userDataDir}`);
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to clean user data directory for ${browserId}:`, error);
+      }
+    }
+    
     this.logger.info(`Browser ${browserId} deleted`);
   }
 
@@ -195,12 +265,14 @@ export class LocalBrowser implements IBrowserPlatform {
     ];
 
     if (config.proxy) {
-      args.push(`--proxy-server=${this.buildProxyString(config.proxy)}`);
+      const proxyString = this.buildProxyString(config.proxy);
+      args.push(`--proxy-server=${proxyString}`);
     }
 
-    if (config.userDataDir) {
-      args.push(`--user-data-dir=${config.userDataDir}`);
-    }
+    // 移除 --user-data-dir 参数，因为现在通过 userDataDir 选项传递
+    // if (config.userDataDir) {
+    //   args.push(`--user-data-dir=${config.userDataDir}`);
+    // }
 
     if (config.args) {
       args.push(...config.args);
@@ -210,8 +282,15 @@ export class LocalBrowser implements IBrowserPlatform {
   }
 
   private buildProxyString(proxy: ProxyConfig): string {
-    const protocol = proxy.type || 'http';
-    return `${protocol}://${proxy.host}:${proxy.port}`;
+    const protocol = proxy.type || proxy.protocol || 'http';
+    let proxyUrl = `${protocol}://${proxy.host}:${proxy.port}`;
+    
+    // 如果有用户名密码，添加认证
+    if (proxy.username && proxy.password) {
+      proxyUrl = `${protocol}://${proxy.username}:${proxy.password}@${proxy.host}:${proxy.port}`;
+    }
+    
+    return proxyUrl;
   }
 
   private async applyFingerprint(page: any, fingerprint?: FingerprintConfig): Promise<void> {
@@ -260,7 +339,16 @@ export class LocalBrowser implements IBrowserPlatform {
       if (this.databaseService) {
         const browser = await this.databaseService.getBrowser(browserId);
         if (browser && browser.config) {
-          return typeof browser.config === 'string' ? JSON.parse(browser.config) : browser.config;
+          const config = typeof browser.config === 'string' ? JSON.parse(browser.config) : browser.config;
+          
+          // 确保用户数据目录存在，如果不存在则重新创建
+          if (!config.userDataDir) {
+            const userDataDir = await this.createUserDataDirectory(browserId, config.name || 'Unknown');
+            config.userDataDir = userDataDir;
+            this.logger.info(`Regenerated user data directory for browser ${browserId}: ${userDataDir}`);
+          }
+          
+          return config;
         }
       }
       return null;
@@ -352,6 +440,7 @@ export class LocalBrowser implements IBrowserPlatform {
   // 处理浏览器进程退出
   private handleBrowserProcessExit(browserId: string): void {
     const browserData = this.browsers.get(browserId);
+    // 只有当浏览器仍在内存中且状态为运行时才处理退出
     if (browserData && browserData.status === 'running') {
       this.logger.info(`Browser ${browserId} was closed externally`);
       this.updateBrowserStatus(browserId, 'stopped');
@@ -359,9 +448,101 @@ export class LocalBrowser implements IBrowserPlatform {
       // 清理浏览器数据但保留配置
       browserData.browser = null;
       browserData.pages = [];
+    } else {
+      // 如果浏览器已被删除，则忽略此事件
+      this.logger.debug(`Ignoring process exit for deleted browser ${browserId}`);
     }
   }
 
+  // 创建用户数据目录
+  private async createUserDataDirectory(browserId: string, browserName: string): Promise<string> {
+    try {
+      // 获取应用数据目录
+      const appDataDir = process.env.APPDATA || 
+                         (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : 
+                          path.join(os.homedir(), '.local', 'share'));
+      
+      // 创建Web3Client浏览器配置文件目录
+      const baseDir = path.join(appDataDir, 'Web3Client', 'browsers');
+      
+      // 确保基础目录存在
+      if (!fs.existsSync(baseDir)) {
+        fs.mkdirSync(baseDir, { recursive: true });
+      }
+      
+      // 创建浏览器专用目录 (使用ID和名称)
+      const safeBrowserName = browserName.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const userDataDir = path.join(baseDir, `${safeBrowserName}_${browserId.substring(0, 8)}`);
+      
+      // 确保用户数据目录存在
+      if (!fs.existsSync(userDataDir)) {
+        fs.mkdirSync(userDataDir, { recursive: true });
+      }
+      
+      this.logger.info(`Created user data directory: ${userDataDir}`);
+      return userDataDir;
+    } catch (error) {
+      this.logger.error(`Failed to create user data directory for ${browserId}:`, error);
+      // 回退到临时目录
+      const tempDir = path.join(os.tmpdir(), 'web3client-browsers', browserId);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      return tempDir;
+    }
+  }
+  
+  // 删除用户数据目录（可选使用）
+  private async removeUserDataDirectory(userDataDir: string): Promise<void> {
+    try {
+      if (fs.existsSync(userDataDir)) {
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+        this.logger.info(`Removed user data directory: ${userDataDir}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to remove user data directory ${userDataDir}:`, error);
+      throw error;
+    }
+  }
+  
+  // 获取用户数据目录大小（用于统计）
+  public async getUserDataSize(browserId: string): Promise<number> {
+    const browserData = this.browsers.get(browserId);
+    if (!browserData || !browserData.config.userDataDir) {
+      return 0;
+    }
+    
+    try {
+      return await this.getDirectorySize(browserData.config.userDataDir);
+    } catch (error) {
+      this.logger.error(`Failed to get user data size for ${browserId}:`, error);
+      return 0;
+    }
+  }
+  
+  // 计算目录大小
+  private async getDirectorySize(dirPath: string): Promise<number> {
+    if (!fs.existsSync(dirPath)) {
+      return 0;
+    }
+    
+    let totalSize = 0;
+    const files = fs.readdirSync(dirPath);
+    
+    for (const file of files) {
+      const filePath = path.join(dirPath, file);
+      const stats = fs.statSync(filePath);
+      
+      if (stats.isDirectory()) {
+        totalSize += await this.getDirectorySize(filePath);
+      } else {
+        totalSize += stats.size;
+      }
+    }
+    
+    return totalSize;
+  }
+  
   // 清理资源
   public cleanup(): void {
     // No cleanup needed in basic version

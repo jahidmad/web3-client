@@ -81,7 +81,13 @@ export class DatabaseService {
       });
       
       this.logger.debug(`Browser updated: ${browser.id}`);
-    } catch (error) {
+    } catch (error: any) {
+      // 如果记录不存在（可能已被删除），忽略此错误
+      if (error.code === 'P2025' || error.message?.includes('Record to update not found')) {
+        this.logger.debug(`Browser ${browser.id} not found in database, ignoring update`);
+        return;
+      }
+      
       this.logger.error(`Failed to update browser ${browser.id}:`, error);
       throw error;
     }
