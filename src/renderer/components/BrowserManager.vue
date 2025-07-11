@@ -8,18 +8,18 @@
       <div class="actions">
         <div class="view-switch">
           <button 
-            @click="viewMode = 'grid'" 
-            :class="['view-btn', { active: viewMode === 'grid' }]"
-            title="卡片视图"
-          >
-            <i class="icon">⊞</i>
-          </button>
-          <button 
             @click="viewMode = 'list'" 
             :class="['view-btn', { active: viewMode === 'list' }]"
             title="列表视图"
           >
             <i class="icon">☰</i>
+          </button>
+          <button 
+            @click="viewMode = 'grid'" 
+            :class="['view-btn', { active: viewMode === 'grid' }]"
+            title="卡片视图"
+          >
+            <i class="icon">⊞</i>
           </button>
         </div>
         <button @click="refreshBrowsers" class="btn-secondary">
@@ -378,7 +378,7 @@ const deleteTargetId = ref('')
 const deleteTargetName = ref('')
 
 // 视图和分页
-const viewMode = ref<'grid' | 'list'>('grid')
+const viewMode = ref<'grid' | 'list'>('list')
 const currentPage = ref(1)
 const pageSize = ref(20)
 
