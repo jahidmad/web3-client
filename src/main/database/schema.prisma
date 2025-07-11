@@ -46,7 +46,7 @@ model Task {
   id          String        @id @default(uuid())
   name        String
   description String?
-  script      String
+  script      String?       // 保留原有脚本字段用于向后兼容
   args        String?       // JSON string
   timeout     Int           @default(30000)
   retryCount  Int           @default(0)
@@ -54,6 +54,25 @@ model Task {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   groupId     String?
+  
+  // 自动化任务扩展字段
+  type        String        @default("script")  // "script" | "automation"
+  actions     String?       // JSON string - AutomationAction[]
+  variables   String?       // JSON string - Record<string, any>
+  settings    String?       // JSON string - task settings
+  tags        String?       // JSON string - string[]
+  
+  // 新任务文件系统字段
+  taskId      String?       // 任务文件中的ID
+  version     String?       // 任务版本
+  author      String?       // 任务作者
+  logoUrl     String?       // 任务Logo URL
+  category    String?       // 任务分类
+  code        String?       // 任务执行代码
+  parameters  String?       // JSON string - TaskParameter[]
+  examples    String?       // JSON string - 任务示例
+  usageCount  Int           @default(0)
+  lastUsed    DateTime?
   
   group       TaskGroup?    @relation(fields: [groupId], references: [id])
   executions  TaskExecution[]
@@ -72,6 +91,14 @@ model TaskExecution {
   logs        String?  // JSON string array
   retryCount  Int      @default(0)
   
+  // 自动化执行扩展字段
+  currentActionIndex  Int?     // 当前执行的动作索引
+  extractedData      String?  // JSON string - 提取的数据
+  screenshots        String?  // JSON string - 截图文件路径数组
+  progressCompleted  Int?     // 已完成动作数
+  progressTotal      Int?     // 总动作数
+  variables          String?  // JSON string - 执行时的变量
+  
   task        Task     @relation(fields: [taskId], references: [id])
   browser     Browser  @relation(fields: [browserId], references: [id])
 }
@@ -79,10 +106,14 @@ model TaskExecution {
 model TaskSchedule {
   id          String   @id @default(uuid())
   taskId      String
-  cronExpression String
+  browserId   String   // 执行时使用的浏览器ID
+  scheduleConfig String // JSON string - ScheduleConfig
+  variables   String?  // JSON string - 调度时的变量
   isActive    Boolean  @default(true)
-  lastRun     DateTime?
-  nextRun     DateTime
+  executionCount Int   @default(0)
+  maxExecutions  Int?  // 最大执行次数
+  nextExecutionTime DateTime?
+  lastExecutionTime DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   

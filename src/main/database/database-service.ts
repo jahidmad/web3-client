@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { Browser, BrowserGroup, Task, Account, SystemConfig } from '../types';
+import type { LocalTask, TaskFile, TaskExecution as TaskExec } from '../types/task';
 import { Logger } from '../utils/logger';
 import { join } from 'path';
 
@@ -324,6 +325,260 @@ export class DatabaseService {
       this.logger.info(`Cleaned up ${result.count} old log entries`);
     } catch (error) {
       this.logger.error('Failed to cleanup old logs:', error);
+    }
+  }
+
+  // ===== 任务管理方法 =====
+
+  async saveTask(taskFile: TaskFile): Promise<LocalTask> {
+    try {
+      const task = await this.prisma.task.create({
+        data: {
+          id: taskFile.metadata.id,
+          taskId: taskFile.metadata.id,
+          name: taskFile.metadata.name,
+          description: taskFile.metadata.description,
+          version: taskFile.metadata.version,
+          author: taskFile.metadata.author,
+          logoUrl: taskFile.metadata.logoUrl,
+          category: taskFile.metadata.category,
+          tags: JSON.stringify(taskFile.metadata.tags || []),
+          code: taskFile.code,
+          parameters: JSON.stringify(taskFile.parameters || []),
+          examples: JSON.stringify(taskFile.examples || []),
+          type: 'automation',
+          status: 'active',
+          usageCount: 0
+        }
+      });
+
+      const localTask: LocalTask = {
+        id: task.id,
+        filePath: '', // 不再使用文件路径
+        metadata: taskFile.metadata,
+        parameters: taskFile.parameters,
+        addedAt: task.createdAt,
+        usageCount: task.usageCount,
+        status: task.status as 'active' | 'disabled',
+        lastUsed: task.lastUsed || undefined
+      };
+
+      this.logger.info(`Task saved to database: ${taskFile.metadata.name} (${task.id})`);
+      return localTask;
+    } catch (error) {
+      this.logger.error(`Failed to save task ${taskFile.metadata.id}:`, error);
+      throw error;
+    }
+  }
+
+  async getTasks(): Promise<LocalTask[]> {
+    try {
+      const tasks = await this.prisma.task.findMany({
+        where: {
+          type: 'automation' // 只获取新的自动化任务
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      return tasks.map(task => ({
+        id: task.id,
+        filePath: '', // 不再使用文件路径
+        metadata: {
+          id: task.taskId || task.id,
+          name: task.name,
+          description: task.description || '',
+          version: task.version || '1.0.0',
+          author: task.author || 'Unknown',
+          logoUrl: task.logoUrl || undefined,
+          category: task.category || 'general',
+          tags: task.tags ? JSON.parse(task.tags) : [],
+          createdAt: task.createdAt.toISOString(),
+          updatedAt: task.updatedAt.toISOString()
+        },
+        parameters: task.parameters ? JSON.parse(task.parameters) : [],
+        addedAt: task.createdAt,
+        usageCount: task.usageCount,
+        status: task.status as 'active' | 'disabled',
+        lastUsed: task.lastUsed || undefined
+      }));
+    } catch (error) {
+      this.logger.error('Failed to get tasks:', error);
+      throw error;
+    }
+  }
+
+  async getTask(taskId: string): Promise<LocalTask | null> {
+    try {
+      const task = await this.prisma.task.findUnique({
+        where: { id: taskId }
+      });
+
+      if (!task) return null;
+
+      return {
+        id: task.id,
+        filePath: '',
+        metadata: {
+          id: task.taskId || task.id,
+          name: task.name,
+          description: task.description || '',
+          version: task.version || '1.0.0',
+          author: task.author || 'Unknown',
+          logoUrl: task.logoUrl || undefined,
+          category: task.category || 'general',
+          tags: task.tags ? JSON.parse(task.tags) : [],
+          createdAt: task.createdAt.toISOString(),
+          updatedAt: task.updatedAt.toISOString()
+        },
+        parameters: task.parameters ? JSON.parse(task.parameters) : [],
+        addedAt: task.createdAt,
+        usageCount: task.usageCount,
+        status: task.status as 'active' | 'disabled',
+        lastUsed: task.lastUsed || undefined
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get task ${taskId}:`, error);
+      throw error;
+    }
+  }
+
+  async getTaskFile(taskId: string): Promise<TaskFile | null> {
+    try {
+      const task = await this.prisma.task.findUnique({
+        where: { id: taskId }
+      });
+
+      if (!task) return null;
+
+      return {
+        metadata: {
+          id: task.taskId || task.id,
+          name: task.name,
+          description: task.description || '',
+          version: task.version || '1.0.0',
+          author: task.author || 'Unknown',
+          logoUrl: task.logoUrl || undefined,
+          category: task.category || 'general',
+          tags: task.tags ? JSON.parse(task.tags) : [],
+          createdAt: task.createdAt.toISOString(),
+          updatedAt: task.updatedAt.toISOString()
+        },
+        parameters: task.parameters ? JSON.parse(task.parameters) : [],
+        code: task.code || '',
+        examples: task.examples ? JSON.parse(task.examples) : []
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get task file ${taskId}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteTask(taskId: string): Promise<void> {
+    try {
+      await this.prisma.task.delete({
+        where: { id: taskId }
+      });
+
+      this.logger.info(`Task deleted: ${taskId}`);
+    } catch (error) {
+      this.logger.error(`Failed to delete task ${taskId}:`, error);
+      throw error;
+    }
+  }
+
+  async updateTaskUsage(taskId: string): Promise<void> {
+    try {
+      await this.prisma.task.update({
+        where: { id: taskId },
+        data: {
+          usageCount: {
+            increment: 1
+          },
+          lastUsed: new Date()
+        }
+      });
+    } catch (error) {
+      this.logger.error(`Failed to update task usage ${taskId}:`, error);
+      throw error;
+    }
+  }
+
+  async saveTaskExecution(execution: TaskExec): Promise<void> {
+    try {
+      await this.prisma.taskExecution.create({
+        data: {
+          id: execution.id,
+          taskId: execution.taskId,
+          browserId: execution.browserId,
+          status: execution.status,
+          startTime: execution.startTime,
+          endTime: execution.endTime,
+          error: execution.error,
+          logs: JSON.stringify(execution.logs || []),
+          retryCount: 0,
+          progressCompleted: execution.progress?.current,
+          progressTotal: execution.progress?.total,
+          variables: JSON.stringify(execution.parameters || {})
+        }
+      });
+    } catch (error) {
+      this.logger.error(`Failed to save task execution ${execution.id}:`, error);
+      throw error;
+    }
+  }
+
+  async getTaskExecutions(taskId: string): Promise<TaskExec[]> {
+    try {
+      const executions = await this.prisma.taskExecution.findMany({
+        where: { taskId },
+        orderBy: { startTime: 'desc' }
+      });
+
+      return executions.map(exec => ({
+        id: exec.id,
+        taskId: exec.taskId,
+        browserId: exec.browserId,
+        status: exec.status as any,
+        startTime: exec.startTime,
+        endTime: exec.endTime || undefined,
+        error: exec.error || undefined,
+        logs: exec.logs ? JSON.parse(exec.logs) : [],
+        parameters: exec.variables ? JSON.parse(exec.variables) : {},
+        progress: exec.progressCompleted !== null && exec.progressTotal !== null 
+          ? { current: exec.progressCompleted, total: exec.progressTotal }
+          : undefined
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to get task executions for ${taskId}:`, error);
+      throw error;
+    }
+  }
+
+  async getAllTaskExecutions(): Promise<TaskExec[]> {
+    try {
+      const executions = await this.prisma.taskExecution.findMany({
+        orderBy: { startTime: 'desc' }
+      });
+
+      return executions.map(exec => ({
+        id: exec.id,
+        taskId: exec.taskId,
+        browserId: exec.browserId,
+        status: exec.status as any,
+        startTime: exec.startTime,
+        endTime: exec.endTime || undefined,
+        error: exec.error || undefined,
+        logs: exec.logs ? JSON.parse(exec.logs) : [],
+        parameters: exec.variables ? JSON.parse(exec.variables) : {},
+        progress: exec.progressCompleted !== null && exec.progressTotal !== null 
+          ? { current: exec.progressCompleted, total: exec.progressTotal }
+          : undefined
+      }));
+    } catch (error) {
+      this.logger.error('Failed to get all task executions:', error);
+      throw error;
     }
   }
 }

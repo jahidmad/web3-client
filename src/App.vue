@@ -23,10 +23,9 @@
               </button>
             </li>
             <li class="nav-item" :class="{ active: activeTab === 'task' }">
-              <button @click="activeTab = 'task'" class="nav-link" disabled>
+              <button @click="activeTab = 'task'" class="nav-link">
                 <i class="nav-icon">⚡</i>
                 <span>任务管理</span>
-                <span class="coming-soon-badge">Soon</span>
               </button>
             </li>
             <li class="nav-item" :class="{ active: activeTab === 'account' }">
@@ -92,6 +91,7 @@
       <!-- 内容区域 -->
       <div class="content-area">
         <BrowserManager v-if="activeTab === 'browser'" />
+        <TaskManager v-else-if="activeTab === 'task'" />
         
         <div v-else class="coming-soon-content">
           <div class="coming-soon-icon">🚧</div>
@@ -99,13 +99,7 @@
           <p>此功能正在开发中，敬请期待...</p>
           <div class="feature-preview">
             <h4>即将推出的功能：</h4>
-            <ul v-if="activeTab === 'task'">
-              <li>任务脚本编辑器</li>
-              <li>定时任务调度</li>
-              <li>任务执行监控</li>
-              <li>批量任务执行</li>
-            </ul>
-            <ul v-else-if="activeTab === 'account'">
+            <ul v-if="activeTab === 'account'">
               <li>多平台账户管理</li>
               <li>账户状态验证</li>
               <li>批量导入导出</li>
@@ -126,7 +120,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import BrowserManager from '@/components/BrowserManager.vue'
+import BrowserManager from './renderer/components/BrowserManager.vue'
+import TaskManager from './renderer/components/TaskManager.vue'
 
 const activeTab = ref('browser')
 

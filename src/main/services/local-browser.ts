@@ -358,31 +358,7 @@ export class LocalBrowser implements IBrowserPlatform {
     }
   }
 
-  public async getPage(browserId: string, pageIndex: number = 0): Promise<any | null> {
-    const browserData = this.browsers.get(browserId);
-    if (!browserData || !browserData.pages[pageIndex]) {
-      return null;
-    }
-    
-    return browserData.pages[pageIndex];
-  }
-
-  public async createNewPage(browserId: string): Promise<any | null> {
-    const browserData = this.browsers.get(browserId);
-    if (!browserData) {
-      return null;
-    }
-    
-    try {
-      const page = await browserData.browser.newPage();
-      browserData.pages.push(page);
-      return page;
-    } catch (error) {
-      this.logger.error(`Failed to create new page for browser ${browserId}:`, error);
-      return null;
-    }
-  }
-
+  
   public getBrowserCount(): number {
     return this.browsers.size;
   }
@@ -543,6 +519,39 @@ export class LocalBrowser implements IBrowserPlatform {
     return totalSize;
   }
   
+  public async getPage(browserId: string, pageIndex: number = 0): Promise<any | null> {
+    const browserData = this.browsers.get(browserId);
+    if (!browserData || !browserData.pages[pageIndex]) {
+      return null;
+    }
+    return browserData.pages[pageIndex];
+  }
+
+  public async getMainPage(browserId: string): Promise<any | null> {
+    return this.getPage(browserId, 0);
+  }
+
+  public async createNewPage(browserId: string): Promise<any | null> {
+    const browserData = this.browsers.get(browserId);
+    if (!browserData || !browserData.browser) {
+      throw new Error(`Browser ${browserId} not found or not running`);
+    }
+
+    try {
+      const page = await browserData.browser.newPage();
+      browserData.pages.push(page);
+      
+      // 应用指纹信息到新页面
+      await this.applyFingerprint(page, browserData.config.fingerprint);
+      
+      this.logger.info(`Created new page for browser ${browserId}`);
+      return page;
+    } catch (error) {
+      this.logger.error(`Failed to create new page for browser ${browserId}:`, error);
+      throw error;
+    }
+  }
+
   // 清理资源
   public cleanup(): void {
     // No cleanup needed in basic version

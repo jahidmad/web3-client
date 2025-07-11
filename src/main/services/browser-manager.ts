@@ -212,6 +212,10 @@ export class BrowserManager {
     }
   }
 
+  getBrowser(browserId: string): Browser | undefined {
+    return this.browsers.get(browserId);
+  }
+
   async getBrowserStatus(browserId: string): Promise<BrowserStatus> {
     try {
       const browser = this.browsers.get(browserId);
@@ -407,5 +411,19 @@ export class BrowserManager {
     } catch (error) {
       this.logger.error('Failed to refresh browser statuses:', error);
     }
+  }
+
+  /**
+   * 获取平台实例 - 供TaskEngine使用
+   */
+  public getPlatform(platformName: string): IBrowserPlatform | undefined {
+    return this.platforms.get(platformName);
+  }
+
+  /**
+   * 获取所有平台
+   */
+  public getPlatforms(): Map<string, IBrowserPlatform> {
+    return this.platforms;
   }
 }

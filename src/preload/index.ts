@@ -11,8 +11,43 @@ const electronAPI = {
     refresh: () => ipcRenderer.invoke('browser:refresh'),
     batchOperation: (action: any) => ipcRenderer.invoke('browser:batch', action),
     platformAvailability: () => ipcRenderer.invoke('browser:platforms'),
+    getBrowsers: () => ipcRenderer.invoke('browser:get-browsers'),
   },
   
+  // 任务引擎 API
+  taskEngine: {
+    createTask: (request: any) => ipcRenderer.invoke('task-engine:create-task', request),
+    getTasks: () => ipcRenderer.invoke('task-engine:get-tasks'),
+    getTask: (taskId: string) => ipcRenderer.invoke('task-engine:get-task', taskId),
+    updateTask: (taskId: string, updates: any) => ipcRenderer.invoke('task-engine:update-task', taskId, updates),
+    deleteTask: (taskId: string) => ipcRenderer.invoke('task-engine:delete-task', taskId),
+    executeTask: (request: any) => ipcRenderer.invoke('task-engine:execute-task', request),
+    getExecutions: () => ipcRenderer.invoke('task-engine:get-executions'),
+  },
+  
+  // 任务调度器 API
+  taskScheduler: {
+    scheduleTask: (request: any) => ipcRenderer.invoke('task-scheduler:schedule-task', request),
+    getScheduledTasks: () => ipcRenderer.invoke('task-scheduler:get-scheduled-tasks'),
+    pauseTask: (scheduleId: string) => ipcRenderer.invoke('task-scheduler:pause-task', scheduleId),
+    resumeTask: (scheduleId: string) => ipcRenderer.invoke('task-scheduler:resume-task', scheduleId),
+    deleteTask: (scheduleId: string) => ipcRenderer.invoke('task-scheduler:delete-task', scheduleId),
+  },
+  
+  // 任务管理器 API
+  taskManager: {
+    uploadTask: (request: any) => ipcRenderer.invoke('task-manager:upload-task', request),
+    importTask: (request: any) => ipcRenderer.invoke('task-manager:import-task', request),
+    getTasks: (request?: any) => ipcRenderer.invoke('task-manager:get-tasks', request),
+    getTask: (taskId: string) => ipcRenderer.invoke('task-manager:get-task', taskId),
+    deleteTask: (taskId: string) => ipcRenderer.invoke('task-manager:delete-task', taskId),
+    executeTask: (request: any) => ipcRenderer.invoke('task-manager:execute-task', request),
+    getTaskExecutions: (taskId: string) => ipcRenderer.invoke('task-manager:get-executions', taskId),
+    getAllExecutions: () => ipcRenderer.invoke('task-manager:get-all-executions'),
+    getTaskStats: (taskId: string) => ipcRenderer.invoke('task-manager:get-task-stats', taskId),
+  },
+  
+  // 保留原有的 task API 以兼容
   task: {
     create: (task: any) => ipcRenderer.invoke('task:create', task),
     update: (id: string, updates: any) => ipcRenderer.invoke('task:update', id, updates),
@@ -41,6 +76,9 @@ const electronAPI = {
     getLogs: (filter?: any) => ipcRenderer.invoke('system:logs', filter),
     clearLogs: () => ipcRenderer.invoke('system:logs:clear'),
   },
+
+  // 通用调用方法，用于简化组件中的调用
+  invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
   
   events: {
     onBrowserStatusChange: (callback: (event: any, data: any) => void) => {
