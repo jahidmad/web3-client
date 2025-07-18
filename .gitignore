@@ -12,6 +12,7 @@ release/
 out/
 
 # Development
+.kiro/
 .vscode/
 .idea/
 *.swp
@@ -58,6 +59,9 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 .tsbuildinfo
+src/**/*.js
+src/**/*.js.map
+src/**/*.ts.map
 
 # Database files
 *.db

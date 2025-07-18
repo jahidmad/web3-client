@@ -45,6 +45,64 @@ const electronAPI = {
     getTaskExecutions: (taskId: string) => ipcRenderer.invoke('task-manager:get-executions', taskId),
     getAllExecutions: () => ipcRenderer.invoke('task-manager:get-all-executions'),
     getTaskStats: (taskId: string) => ipcRenderer.invoke('task-manager:get-task-stats', taskId),
+    checkDependencies: (taskId: string) => ipcRenderer.invoke('task-manager:check-dependencies', taskId),
+    installDependencies: (request: any) => ipcRenderer.invoke('task-manager:install-dependencies', request),
+    getDependencySummary: () => ipcRenderer.invoke('task-manager:get-dependency-summary'),
+    cleanupDependencies: () => ipcRenderer.invoke('task-manager:cleanup-dependencies'),
+  },
+
+  taskStore: {
+    searchTasks: (request: any) => ipcRenderer.invoke('task-store:search-tasks', request),
+    installTask: (request: any) => ipcRenderer.invoke('task-store:install-task', request),
+    uninstallTask: (taskId: string) => ipcRenderer.invoke('task-store:uninstall-task', taskId),
+    getStoreStats: () => ipcRenderer.invoke('task-store:get-store-stats'),
+    checkForUpdates: () => ipcRenderer.invoke('task-store:check-for-updates'),
+  },
+  
+  // 插件任务系统 API
+  pluginTask: {
+    // 浏览器任务执行
+    executeInBrowser: (request: any, task: any) => ipcRenderer.invoke('plugin-task:execute-in-browser', request, task),
+    getAvailableBrowsers: () => ipcRenderer.invoke('plugin-task:get-available-browsers'),
+    
+    // 任务执行
+    execute: (request: any, task: any) => ipcRenderer.invoke('plugin-task:execute', request, task),
+    stopExecution: (executionId: string) => ipcRenderer.invoke('plugin-task:stop-execution', executionId),
+    getExecution: (executionId: string) => ipcRenderer.invoke('plugin-task:get-execution', executionId),
+    getExecutions: (taskId?: string) => ipcRenderer.invoke('plugin-task:get-executions', taskId),
+    
+    // 任务调度
+    schedule: (request: any, task: any, priority?: number) => ipcRenderer.invoke('plugin-task:schedule', request, task, priority),
+    cancelScheduled: (queueId: string) => ipcRenderer.invoke('plugin-task:cancel-scheduled', queueId),
+    getQueueStatus: () => ipcRenderer.invoke('plugin-task:get-queue-status'),
+    getScheduledExecution: (queueId: string) => ipcRenderer.invoke('plugin-task:get-scheduled-execution', queueId),
+    clearQueue: () => ipcRenderer.invoke('plugin-task:clear-queue'),
+    
+    // 任务CRUD操作
+    upload: (file: Buffer, filename: string) => ipcRenderer.invoke('plugin-task:upload', file, filename),
+    getAll: (filter?: any) => ipcRenderer.invoke('plugin-task:get-all', filter),
+    getById: (taskId: string) => ipcRenderer.invoke('plugin-task:get-by-id', taskId),
+    update: (taskId: string, updates: any) => ipcRenderer.invoke('plugin-task:update', taskId, updates),
+    delete: (taskId: string) => ipcRenderer.invoke('plugin-task:delete', taskId),
+    search: (query: string, filter?: any) => ipcRenderer.invoke('plugin-task:search', query, filter),
+    count: (filter?: any) => ipcRenderer.invoke('plugin-task:count', filter),
+    
+    // 依赖管理
+    installDependencies: (request: any) => ipcRenderer.invoke('plugin-task:install-dependencies', request),
+    checkDependency: (dependency: string, taskId: string) => ipcRenderer.invoke('plugin-task:check-dependency', dependency, taskId),
+    cleanupTaskDependencies: (taskId: string) => ipcRenderer.invoke('plugin-task:cleanup-task-dependencies', taskId),
+    cleanupAllDependencies: () => ipcRenderer.invoke('plugin-task:cleanup-all-dependencies'),
+    
+    // 依赖状态和缓存管理
+    checkDependencyStatus: (dependency: string, taskId: string) => ipcRenderer.invoke('plugin-task:check-dependency-status', dependency, taskId),
+    checkDependencyHealth: (dependency: string, taskId: string) => ipcRenderer.invoke('plugin-task:check-dependency-health', dependency, taskId),
+    checkTaskDependencies: (taskId: string, dependencies: string[]) => ipcRenderer.invoke('plugin-task:check-task-dependencies', taskId, dependencies),
+    checkDependencyConflicts: (taskId: string, dependencies: string[]) => ipcRenderer.invoke('plugin-task:check-dependency-conflicts', taskId, dependencies),
+    getCachedDependency: (name: string, version: string) => ipcRenderer.invoke('plugin-task:get-cached-dependency', name, version),
+    addToCache: (dependency: any, taskId: string) => ipcRenderer.invoke('plugin-task:add-to-cache', dependency, taskId),
+    removeFromCache: (name: string, version: string) => ipcRenderer.invoke('plugin-task:remove-from-cache', name, version),
+    getCacheStats: () => ipcRenderer.invoke('plugin-task:get-cache-stats'),
+    cleanupCache: () => ipcRenderer.invoke('plugin-task:cleanup-cache'),
   },
   
   // 保留原有的 task API 以兼容
@@ -95,6 +153,32 @@ const electronAPI = {
       ipcRenderer.on('system:notification', callback);
       return () => ipcRenderer.removeListener('system:notification', callback);
     },
+    
+    // 插件任务系统事件
+    onPluginTaskExecution: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('plugin-task:execution', callback);
+      return () => ipcRenderer.removeListener('plugin-task:execution', callback);
+    },
+    
+    onPluginTaskProgress: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('plugin-task:progress', callback);
+      return () => ipcRenderer.removeListener('plugin-task:progress', callback);
+    },
+    
+    onPluginTaskScheduler: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('plugin-task:scheduler', callback);
+      return () => ipcRenderer.removeListener('plugin-task:scheduler', callback);
+    },
+    
+    onPluginTaskDependency: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('plugin-task:dependency', callback);
+      return () => ipcRenderer.removeListener('plugin-task:dependency', callback);
+    },
+    
+    onPluginTaskError: (callback: (event: any, error: any) => void) => {
+      ipcRenderer.on('plugin-task:error', callback);
+      return () => ipcRenderer.removeListener('plugin-task:error', callback);
+    }
   }
 };
 

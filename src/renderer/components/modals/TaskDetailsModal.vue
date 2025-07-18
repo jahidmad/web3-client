@@ -109,15 +109,58 @@
                     <span v-if="param.validation.pattern">
                       模式: {{ param.validation.pattern }}
                     </span>
-                    <div v-if="param.validation.options" class="param-options">
+                    <div v-if="param.options" class="param-options">
                       <strong>选项:</strong>
                       <ul>
-                        <li v-for="option in param.validation.options" :key="option.value">
+                        <li v-for="option in param.options" :key="option.value">
                           {{ option.label }} ({{ option.value }})
                         </li>
                       </ul>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 依赖管理 -->
+          <div v-if="task.metadata.dependencies && task.metadata.dependencies.length > 0" class="section">
+            <div class="section-header">
+              <h5>任务依赖</h5>
+              <div class="dependency-actions">
+                <button 
+                  v-if="task.dependencyStatus && !task.dependencyStatus.satisfied"
+                  @click="installDependencies"
+                  :disabled="installingDependencies"
+                  class="btn-install"
+                >
+                  <span class="icon">📦</span>
+                  {{ installingDependencies ? '安装中...' : '安装依赖' }}
+                </button>
+                <span 
+                  :class="['dependency-status', task.dependencyStatus?.satisfied ? 'satisfied' : 'unsatisfied']"
+                >
+                  {{ task.dependencyStatus?.satisfied ? '✅ 已满足' : '⚠️ 未满足' }}
+                </span>
+              </div>
+            </div>
+            <div class="dependencies-list">
+              <div 
+                v-for="dep in task.metadata.dependencies" 
+                :key="dep.name || dep"
+                class="dependency-item"
+              >
+                <div class="dep-info">
+                  <span class="dep-name">{{ typeof dep === 'string' ? dep.split('@')[0] : dep.name }}</span>
+                  <span class="dep-version">{{ typeof dep === 'string' ? dep.split('@')[1] || 'latest' : dep.version }}</span>
+                  <span class="dep-type">{{ typeof dep === 'string' ? 'npm' : dep.type || 'npm' }}</span>
+                </div>
+                <div class="dep-status">
+                  <span 
+                    :class="['dep-status-badge', getDependencyStatus(dep)]"
+                  >
+                    {{ getDependencyStatusText(dep) }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -146,6 +189,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { LocalTask } from '../../../main/types/task'
 
 const props = defineProps<{
@@ -154,7 +198,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  install: [task: LocalTask]
+  uninstall: [task: LocalTask]
 }>()
+
+const installingDependencies = ref(false)
 
 const formatDate = (date: Date | string): string => {
   return new Date(date).toLocaleString('zh-CN')
@@ -166,6 +214,54 @@ const getStatusText = (status: string): string => {
     disabled: '禁用'
   }
   return statusMap[status] || status
+}
+
+const installDependencies = async () => {
+  if (!props.task.metadata.dependencies) return
+  
+  installingDependencies.value = true
+  try {
+    const result = await window.electronAPI.taskManager.installDependencies({
+      taskId: props.task.id,
+      dependencies: props.task.metadata.dependencies
+    })
+    
+    if (result.success) {
+      // Emit install event to parent to refresh task data
+      emit('install', props.task)
+    } else {
+      alert('依赖安装失败')
+    }
+  } catch (error) {
+    console.error('Failed to install dependencies:', error)
+    alert('依赖安装失败: ' + error)
+  } finally {
+    installingDependencies.value = false
+  }
+}
+
+const getDependencyStatus = (dep: any): string => {
+  if (!props.task.dependencyStatus) return 'unknown'
+  
+  const depName = typeof dep === 'string' ? dep.split('@')[0] : dep.name
+  const depStatus = props.task.dependencyStatus.dependencies?.find((d: any) => d.name === depName)
+  
+  if (!depStatus) return 'unknown'
+  
+  if (depStatus.installed && depStatus.compatible) return 'success'
+  if (depStatus.installed && !depStatus.compatible) return 'warning'
+  return 'error'
+}
+
+const getDependencyStatusText = (dep: any): string => {
+  const status = getDependencyStatus(dep)
+  const statusMap = {
+    success: '✅ 已安装',
+    warning: '⚠️ 版本不兼容',
+    error: '❌ 未安装',
+    unknown: '❓ 未知'
+  }
+  return statusMap[status] || '❓ 未知'
 }
 </script>
 
@@ -509,5 +605,138 @@ const getStatusText = (status: string): string => {
 .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+/* Dependency Management Styles */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.dependency-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-install {
+  background-color: #10b981;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-install:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+.btn-install:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dependency-status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.dependency-status.satisfied {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.dependency-status.unsatisfied {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.dependencies-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dependency-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+}
+
+.dep-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dep-name {
+  font-weight: 500;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.dep-version {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.dep-type {
+  background: rgba(107, 114, 128, 0.2);
+  color: #6b7280;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.dep-status-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.dep-status-badge.success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.dep-status-badge.warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.dep-status-badge.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.dep-status-badge.unknown {
+  background: rgba(107, 114, 128, 0.2);
+  color: #6b7280;
+}
+
+.icon {
+  font-size: 12px;
 }
 </style>

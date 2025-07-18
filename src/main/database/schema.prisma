@@ -166,3 +166,114 @@ model SystemConfig {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
+
+model TaskRegistry {
+  id          String   @id @default(uuid())
+  taskId      String   @unique // 任务的唯一标识符
+  name        String
+  displayName String   // 显示名称
+  description String
+  publisher   String   // 发布者
+  version     String   // 当前版本
+  repository  String?  // 代码仓库地址
+  homepage    String?  // 主页地址
+  keywords    String?  // JSON string - 关键词数组
+  categories  String?  // JSON string - 分类数组
+  license     String?  // 许可证
+  
+  // 统计信息
+  downloadCount Int    @default(0)
+  rating       Float?  // 平均评分
+  reviewCount  Int     @default(0)
+  
+  // 发布信息
+  publishedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  isPublic     Boolean  @default(true)
+  isVerified   Boolean  @default(false)
+  
+  // 版本历史
+  versions     TaskVersion[]
+  reviews      TaskReview[]
+}
+
+model TaskVersion {
+  id          String   @id @default(uuid())
+  taskId      String
+  version     String
+  changelog   String?
+  downloadUrl String   // 任务文件下载地址
+  fileSize    Int?     // 文件大小(字节)
+  checksum    String?  // 文件校验和
+  
+  createdAt   DateTime @default(now())
+  isPrerelease Boolean @default(false)
+  
+  task        TaskRegistry @relation(fields: [taskId], references: [taskId])
+  
+  @@unique([taskId, version])
+}
+
+model TaskReview {
+  id          String   @id @default(uuid())
+  taskId      String
+  userId      String   // 用户ID (可以是设备ID)
+  rating      Int      // 1-5星评分
+  title       String?
+  content     String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  task        TaskRegistry @relation(fields: [taskId], references: [taskId])
+  
+  @@unique([taskId, userId])
+}
+
+// ============================================================================
+// PLUGIN TASK SYSTEM MODELS
+// ============================================================================
+
+model PluginTask {
+  id           String   @id @default(uuid())
+  name         String
+  description  String
+  version      String
+  author       String
+  category     String
+  tags         String?  // JSON string array
+  icon         String?
+  parameters   String   // JSON string
+  dependencies String   // JSON string array
+  config       String   // JSON string
+  code         String
+  status       String   @default("draft")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  executions   PluginTaskExecution[]
+  
+  @@map("PluginTask")
+}
+
+model PluginTaskExecution {
+  id              String    @id @default(uuid())
+  taskId          String
+  browserId       String
+  status          String    @default("pending")
+  parameters      String    // JSON string
+  startTime       DateTime  @default(now())
+  endTime         DateTime?
+  duration        Int?
+  progress        Int       @default(0)
+  progressMessage String?
+  logs            String?   // JSON string array
+  result          String?   // JSON string
+  error           String?
+  memoryUsage     Int?
+  cpuUsage        Int?
+  
+  task            PluginTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@map("PluginTaskExecution")
+}

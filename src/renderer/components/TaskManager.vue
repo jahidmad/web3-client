@@ -13,7 +13,21 @@
             @click="activeTab = 'tasks'"
           >
             <span class="icon">📋</span>
-            任务列表
+            我的任务
+          </button>
+          <button 
+            :class="['view-btn', { active: activeTab === 'store' }]"
+            @click="activeTab = 'store'"
+          >
+            <span class="icon">🏪</span>
+            任务商店
+          </button>
+          <button 
+            :class="['view-btn', { active: activeTab === 'dependencies' }]"
+            @click="activeTab = 'dependencies'"
+          >
+            <span class="icon">📦</span>
+            依赖管理
           </button>
           <button 
             :class="['view-btn', { active: activeTab === 'executions' }]"
@@ -188,6 +202,120 @@
       </div>
     </div>
 
+    <!-- 任务商店 -->
+    <div v-if="activeTab === 'store'" class="content-section">
+      <TaskStore />
+    </div>
+
+    <!-- 依赖管理 -->
+    <div v-if="activeTab === 'dependencies'" class="content-section">
+      <div class="section-header">
+        <h3>依赖管理</h3>
+        <div class="dependency-actions">
+          <button class="btn-secondary" @click="loadDependencySummary">
+            <span class="icon">🔄</span>
+            刷新状态
+          </button>
+          <button class="btn-danger" @click="cleanupAllDependencies">
+            <span class="icon">🧹</span>
+            清理所有依赖
+          </button>
+        </div>
+      </div>
+
+      <!-- 依赖概览 -->
+      <div class="dependency-summary" v-if="dependencySummary">
+        <div class="summary-cards">
+          <div class="summary-card">
+            <div class="card-icon">📦</div>
+            <div class="card-content">
+              <div class="card-title">总任务数</div>
+              <div class="card-value">{{ dependencySummary.totalTasks }}</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="card-icon">🔗</div>
+            <div class="card-content">
+              <div class="card-title">有依赖的任务</div>
+              <div class="card-value">{{ dependencySummary.tasksWithDependencies }}</div>
+            </div>
+          </div>
+          <div class="summary-card success">
+            <div class="card-icon">✅</div>
+            <div class="card-content">
+              <div class="card-title">依赖满足</div>
+              <div class="card-value">{{ dependencySummary.satisfiedTasks }}</div>
+            </div>
+          </div>
+          <div class="summary-card warning">
+            <div class="card-icon">⚠️</div>
+            <div class="card-content">
+              <div class="card-title">依赖缺失</div>
+              <div class="card-value">{{ dependencySummary.unsatisfiedTasks }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 任务依赖详情 -->
+      <div class="tasks-dependencies">
+        <div 
+          v-for="task in tasksWithDependencies" 
+          :key="task.id"
+          class="task-dependency-card"
+        >
+          <div class="task-header">
+            <div class="task-info">
+              <h4>{{ task.metadata.name }}</h4>
+              <p class="task-version">v{{ task.metadata.version }}</p>
+            </div>
+            <div class="dependency-status">
+              <span 
+                :class="['status-badge', task.dependencyStatus?.satisfied ? 'success' : 'warning']"
+              >
+                {{ task.dependencyStatus?.satisfied ? '✅ 已满足' : '⚠️ 未满足' }}
+              </span>
+            </div>
+          </div>
+          
+          <div class="dependencies-list" v-if="task.metadata.dependencies">
+            <h5>依赖列表：</h5>
+            <div class="dependency-items">
+              <div 
+                v-for="dep in task.metadata.dependencies" 
+                :key="dep.name"
+                class="dependency-item"
+              >
+                <div class="dep-info">
+                  <span class="dep-name">{{ dep.name }}</span>
+                  <span class="dep-version">{{ dep.version }}</span>
+                  <span class="dep-type">{{ dep.type }}</span>
+                </div>
+                <div class="dep-status">
+                  <span 
+                    :class="['dep-status-badge', getDependencyStatus(task, dep.name)]"
+                  >
+                    {{ getDependencyStatusText(task, dep.name) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="task-actions" v-if="task.dependencyStatus && !task.dependencyStatus.satisfied">
+            <button 
+              class="btn-primary"
+              @click="installTaskDependencies(task.id)"
+              :disabled="installingDependencies.has(task.id)"
+            >
+              <span class="icon">📦</span>
+              {{ installingDependencies.has(task.id) ? '安装中...' : '安装依赖' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 执行历史 -->
     <div v-if="activeTab === 'executions'" class="content-section">
       <div class="section-header">
@@ -274,6 +402,15 @@
       v-if="showTaskDetails"
       :task="selectedTask"
       @close="showTaskDetails = false"
+      @install="handleDependencyInstall"
+    />
+
+    <!-- 删除确认模态框 -->
+    <ConfirmDeleteModal 
+      v-if="showConfirmDelete"
+      :task-name="taskToDelete?.metadata.name"
+      @confirm="confirmDeleteTask"
+      @cancel="cancelDeleteTask"
     />
   </div>
 </template>
@@ -288,14 +425,20 @@ import type { Browser } from '../../main/types/browser'
 import ImportTaskModal from './modals/ImportTaskModal.vue'
 import ExecuteTaskModal from './modals/ExecuteTaskModal.vue'
 import TaskDetailsModal from './modals/TaskDetailsModal.vue'
+import ConfirmDeleteModal from './modals/ConfirmDeleteModal.vue'
+import TaskStore from './TaskStore.vue'
 
 // 响应式数据
-const activeTab = ref<'tasks' | 'executions'>('tasks')
+const activeTab = ref<'tasks' | 'store' | 'dependencies' | 'executions'>('tasks')
 const tasks = ref<LocalTask[]>([])
 const executions = ref<TaskExecution[]>([])
 const browsers = ref<Browser[]>([])
 const selectedBrowser = ref<string>('')
 const fileInput = ref<HTMLInputElement | null>(null)
+
+// 依赖管理相关状态
+const dependencySummary = ref<any>(null)
+const installingDependencies = ref<Set<string>>(new Set())
 
 // 过滤条件
 const taskSearchQuery = ref('')
@@ -307,8 +450,10 @@ const executionStatusFilter = ref('')
 const showImportTask = ref(false)
 const showExecuteTaskModal = ref(false)
 const showTaskDetails = ref(false)
+const showConfirmDelete = ref(false)
 const executingTask = ref<LocalTask | null>(null)
 const selectedTask = ref<LocalTask | null>(null)
+const taskToDelete = ref<LocalTask | null>(null)
 
 // 计算属性
 const filteredTasks = computed(() => {
@@ -331,6 +476,12 @@ const filteredTasks = computed(() => {
   }
 
   return filtered
+})
+
+const tasksWithDependencies = computed(() => {
+  return tasks.value.filter(task => 
+    task.metadata.dependencies && task.metadata.dependencies.length > 0
+  )
 })
 
 const filteredExecutions = computed(() => {
@@ -428,16 +579,31 @@ const viewTaskDetails = (task: LocalTask) => {
   showTaskDetails.value = true
 }
 
-const deleteTask = async (taskId: string) => {
-  if (!confirm('确定要删除此任务吗？')) return
+const deleteTask = (taskId: string) => {
+  const task = tasks.value.find(t => t.id === taskId)
+  if (task) {
+    taskToDelete.value = task
+    showConfirmDelete.value = true
+  }
+}
+
+const confirmDeleteTask = async () => {
+  if (!taskToDelete.value) return
 
   try {
-    await window.electronAPI.taskManager.deleteTask(taskId)
+    await window.electronAPI.taskManager.deleteTask(taskToDelete.value.id)
     await loadTasks()
+    showConfirmDelete.value = false
+    taskToDelete.value = null
   } catch (error) {
     console.error('Failed to delete task:', error)
     alert('删除任务失败: ' + error)
   }
+}
+
+const cancelDeleteTask = () => {
+  showConfirmDelete.value = false
+  taskToDelete.value = null
 }
 
 const handleTaskImported = async () => {
@@ -451,6 +617,83 @@ const handleTaskExecuted = async () => {
   executingTask.value = null
   // 切换到执行历史页面
   activeTab.value = 'executions'
+}
+
+const handleDependencyInstall = async (task: LocalTask) => {
+  // Refresh task data after dependency installation
+  await loadTasks()
+  await loadDependencySummary()
+}
+
+// 依赖管理相关方法
+const loadDependencySummary = async () => {
+  try {
+    dependencySummary.value = await window.electronAPI.taskManager.getDependencySummary()
+  } catch (error) {
+    console.error('Failed to load dependency summary:', error)
+  }
+}
+
+const installTaskDependencies = async (taskId: string) => {
+  try {
+    const task = tasks.value.find(t => t.id === taskId)
+    if (!task?.metadata.dependencies) {
+      return
+    }
+
+    installingDependencies.value.add(taskId)
+    
+    const result = await window.electronAPI.taskManager.installDependencies({
+      taskId,
+      dependencies: task.metadata.dependencies
+    })
+    
+    if (result.success) {
+      // 重新加载任务和依赖摘要
+      await loadTasks()
+      await loadDependencySummary()
+    }
+  } catch (error) {
+    console.error('Failed to install dependencies:', error)
+  } finally {
+    installingDependencies.value.delete(taskId)
+  }
+}
+
+const cleanupAllDependencies = async () => {
+  if (!confirm('确定要清理所有任务依赖吗？这将删除所有已安装的依赖包。')) {
+    return
+  }
+  
+  try {
+    await window.electronAPI.taskManager.cleanupDependencies()
+    await loadTasks()
+    await loadDependencySummary()
+  } catch (error) {
+    console.error('Failed to cleanup dependencies:', error)
+  }
+}
+
+const getDependencyStatus = (task: any, depName: string): string => {
+  if (!task.dependencyStatus) return 'unknown'
+  
+  const depStatus = task.dependencyStatus.dependencies.find((d: any) => d.name === depName)
+  if (!depStatus) return 'unknown'
+  
+  if (depStatus.installed && depStatus.compatible) return 'success'
+  if (depStatus.installed && !depStatus.compatible) return 'warning'
+  return 'error'
+}
+
+const getDependencyStatusText = (task: any, depName: string): string => {
+  const status = getDependencyStatus(task, depName)
+  const statusMap = {
+    success: '✅ 已安装',
+    warning: '⚠️ 版本不兼容',
+    error: '❌ 未安装',
+    unknown: '❓ 未知'
+  }
+  return statusMap[status] || '❓ 未知'
 }
 
 const getTaskName = (taskId: string): string => {
@@ -510,6 +753,7 @@ onMounted(() => {
   loadTasks()
   loadExecutions()
   loadBrowsers()
+  loadDependencySummary()
 })
 </script>
 
@@ -1079,6 +1323,203 @@ onMounted(() => {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+/* 依赖管理样式 */
+.dependency-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.dependency-summary {
+  margin-bottom: 24px;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.summary-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.2s ease;
+}
+
+.summary-card:hover {
+  border-color: #64748b;
+  transform: translateY(-2px);
+}
+
+.summary-card.success {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.summary-card.warning {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.card-icon {
+  font-size: 24px;
+  opacity: 0.8;
+}
+
+.card-content {
+  flex: 1;
+}
+
+.card-title {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.card-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.tasks-dependencies {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.task-dependency-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 20px;
+  transition: all 0.2s ease;
+}
+
+.task-dependency-card:hover {
+  border-color: #64748b;
+}
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.task-info h4 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 16px;
+}
+
+.task-version {
+  margin: 4px 0 0 0;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.status-badge.warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.dependencies-list h5 {
+  margin: 0 0 12px 0;
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.dependency-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dependency-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #0f172a;
+  border-radius: 4px;
+  border: 1px solid #334155;
+}
+
+.dep-info {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.dep-name {
+  font-weight: 500;
+  color: #f8fafc;
+}
+
+.dep-version {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.dep-type {
+  background: #374151;
+  color: #d1d5db;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.dep-status-badge {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.dep-status-badge.success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.dep-status-badge.warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.dep-status-badge.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.dep-status-badge.unknown {
+  background: rgba(107, 114, 128, 0.2);
+  color: #94a3b8;
+}
+
+.task-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
 }
 
 /* 响应式设计 */

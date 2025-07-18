@@ -27,6 +27,25 @@ export interface TaskParameter {
   };
 }
 
+// 任务依赖定义
+export interface TaskDependency {
+  name: string;
+  version: string;
+  type: 'npm' | 'browser-api' | 'system' | 'builtin';
+  optional?: boolean;
+  reason?: string; // 依赖用途说明
+}
+
+// 任务运行时环境要求
+export interface TaskRuntime {
+  nodeVersion?: string; // 最低Node.js版本要求
+  platform?: string[]; // 支持的操作系统平台
+  memory?: number; // 最低内存要求(MB)
+  timeout?: number; // 任务超时时间(秒)
+  sandbox?: boolean; // 是否需要沙箱环境
+  permissions?: string[]; // 需要的权限列表
+}
+
 // 任务元信息
 export interface TaskMetadata {
   id: string;
@@ -39,6 +58,11 @@ export interface TaskMetadata {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  dependencies?: TaskDependency[];
+  runtime?: TaskRuntime;
+  license?: string;
+  repository?: string;
+  homepage?: string;
 }
 
 // 任务文件结构
@@ -53,6 +77,55 @@ export interface TaskFile {
   }>;
 }
 
+// 依赖安装状态
+export interface DependencyStatus {
+  name: string;
+  version: string;
+  type: TaskDependency['type'];
+  installed: boolean;
+  installedVersion?: string;
+  compatible: boolean;
+  error?: string;
+  installPath?: string;
+}
+
+// 任务依赖检查结果
+export interface TaskDependencyCheck {
+  taskId: string;
+  satisfied: boolean;
+  dependencies: DependencyStatus[];
+  missingDependencies: TaskDependency[];
+  incompatibleDependencies: TaskDependency[];
+  installRequired: boolean;
+}
+
+// 依赖安装请求
+export interface InstallDependencyRequest {
+  taskId: string;
+  dependencies: TaskDependency[];
+  force?: boolean; // 强制重新安装
+}
+
+// 依赖安装结果
+export interface InstallDependencyResult {
+  success: boolean;
+  installed: DependencyStatus[];
+  failed: Array<{ dependency: TaskDependency; error: string }>;
+  warnings: string[];
+}
+
+// 任务沙箱配置
+export interface TaskSandboxConfig {
+  enabled: boolean;
+  isolateNetwork?: boolean;
+  allowedDomains?: string[];
+  maxMemory?: number; // MB
+  maxExecutionTime?: number; // 秒
+  allowFileSystem?: boolean;
+  allowedPaths?: string[];
+  environmentVariables?: Record<string, string>;
+}
+
 // 本地任务记录
 export interface LocalTask {
   id: string;
@@ -63,6 +136,8 @@ export interface LocalTask {
   lastUsed?: Date;
   usageCount: number;
   status: 'active' | 'disabled';
+  dependencyStatus?: TaskDependencyCheck;
+  sandboxConfig?: TaskSandboxConfig;
 }
 
 // 任务执行请求
@@ -128,13 +203,37 @@ export interface TaskExecutionContext {
   log: (level: 'info' | 'warn' | 'error' | 'debug', message: string) => void;
   progress: (current: number, total: number, message?: string) => void;
   utils: {
+    // 基本等待和延迟
     wait: (ms: number) => Promise<void>;
+    sleep: (ms: number) => Promise<void>;
+    
+    // 页面元素操作
     waitForSelector: (selector: string, timeout?: number) => Promise<any>;
     click: (selector: string) => Promise<void>;
     type: (selector: string, text: string) => Promise<void>;
-    screenshot: (filename?: string) => Promise<string>;
     extractText: (selector: string) => Promise<string>;
     extractAttribute: (selector: string, attribute: string) => Promise<string>;
+    
+    // 截图和文件操作
+    screenshot: (filename?: string) => Promise<string>;
+    saveFile: (content: string | Buffer, filename: string) => Promise<string>;
+    
+    // 字符串和数据处理工具
+    formatDate: (date: Date, format?: string) => string;
+    isValidEmail: (email: string) => boolean;
+    isValidUrl: (url: string) => boolean;
+    randomString: (length?: number) => string;
+    
+    // 数组和对象工具
+    unique: (array: any[]) => any[];
+    groupBy: (array: any[], key: string) => Record<string, any[]>;
+    
+    // 数据解析
+    parseCSV: (csvText: string) => any[];
+    safeJsonParse: (jsonStr: string, defaultValue?: any) => any;
+    
+    // 哈希和加密工具
+    createHash: (content: string) => string;
   };
 }
 

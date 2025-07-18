@@ -31,10 +31,32 @@ export class DatabaseService {
       await this.prisma.$connect();
       this.logger.info('Database connected successfully');
       
+      // 检查并确保表存在
+      await this.ensureTablesExist();
+      
       await this.initializeDefaultConfig();
     } catch (error) {
       this.logger.error('Failed to initialize database:', error);
       throw error;
+    }
+  }
+  
+  /**
+   * 确保必要的数据库表存在
+   */
+  async ensureTablesExist(): Promise<void> {
+    try {
+      // 尝试查询SystemConfig表，如果不存在会抛出错误
+      await this.prisma.$queryRaw`SELECT 1 FROM SystemConfig LIMIT 1`;
+      this.logger.info('Database tables exist');
+    } catch (error) {
+      const err = error as Error;
+      if (err.message && err.message.includes('no such table')) {
+        this.logger.warn('Required database tables do not exist, creating schema');
+        await this.createDatabaseSchema();
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -304,7 +326,38 @@ export class DatabaseService {
         this.logger.info('Default system config initialized');
       }
     } catch (error) {
-      this.logger.error('Failed to initialize default config:', error);
+      // 检查是否是表不存在错误
+      const err = error as Error;
+      if (err.message && err.message.includes('does not exist in the current database')) {
+        this.logger.warn('SystemConfig table does not exist, attempting to create schema');
+        await this.createDatabaseSchema();
+        // 重试初始化默认配置
+        await this.initializeDefaultConfig();
+      } else {
+        this.logger.error('Failed to initialize default config:', error);
+        throw error;
+      }
+    }
+  }
+  
+  /**
+   * 创建数据库架构
+   * 当检测到表不存在时，使用Prisma创建数据库架构
+   */
+  private async createDatabaseSchema(): Promise<void> {
+    try {
+      // 使用子进程执行prisma db push命令
+      const { execSync } = require('child_process');
+      this.logger.info('Creating database schema using Prisma...');
+      
+      // 执行prisma db push命令
+      execSync('npx prisma db push --schema=src/main/database/schema.prisma', {
+        stdio: 'inherit'
+      });
+      
+      this.logger.info('Database schema created successfully');
+    } catch (error) {
+      this.logger.error('Failed to create database schema:', error);
       throw error;
     }
   }

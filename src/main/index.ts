@@ -6,6 +6,7 @@ import { DatabaseService } from './database/database-service';
 import { TaskEngine } from './services/task-engine';
 import { TaskScheduler } from './services/task-scheduler';
 import { TaskManager } from './services/task-manager';
+import { TaskStoreService } from './services/task-store';
 
 class Application {
   private mainWindow: BrowserWindow | null = null;
@@ -13,6 +14,7 @@ class Application {
   private taskEngine: TaskEngine | null = null;
   private taskScheduler: TaskScheduler | null = null;
   private taskManager: TaskManager | null = null;
+  private taskStoreService: TaskStoreService | null = null;
   private databaseService: DatabaseService;
   private logger: Logger;
 
@@ -59,6 +61,9 @@ class Application {
       
       // 初始化任务管理器
       this.taskManager = new TaskManager(this.browserManager, this.databaseService);
+      
+      // 初始化任务商店服务
+      this.taskStoreService = new TaskStoreService(this.databaseService);
       
       // 启动任务引擎、调度器和任务管理器
       await this.taskEngine.start();
@@ -151,6 +156,10 @@ class Application {
       ipcMain.removeHandler('task-manager:get-executions');
       ipcMain.removeHandler('task-manager:get-all-executions');
       ipcMain.removeHandler('task-manager:get-task-stats');
+      ipcMain.removeHandler('task-manager:check-dependencies');
+      ipcMain.removeHandler('task-manager:install-dependencies');
+      ipcMain.removeHandler('task-manager:get-dependency-summary');
+      ipcMain.removeHandler('task-manager:cleanup-dependencies');
 
       // Browser IPC handlers
       ipcMain.handle('browser:create', async (event, config) => {
@@ -482,6 +491,99 @@ class Application {
         } catch (error) {
           this.logger.error('IPC task-manager:get-task-stats error:', error);
           return null;
+        }
+      });
+
+      // Task Store IPC handlers
+      ipcMain.handle('task-store:search-tasks', async (event, request) => {
+        try {
+          this.logger.debug('IPC task-store:search-tasks called');
+          return await this.taskStoreService!.searchTasks(request);
+        } catch (error) {
+          this.logger.error('IPC task-store:search-tasks error:', error);
+          throw error;
+        }
+      });
+
+      ipcMain.handle('task-store:install-task', async (event, request) => {
+        try {
+          this.logger.debug('IPC task-store:install-task called');
+          return await this.taskStoreService!.installTask(request);
+        } catch (error) {
+          this.logger.error('IPC task-store:install-task error:', error);
+          throw error;
+        }
+      });
+
+      ipcMain.handle('task-store:uninstall-task', async (event, taskId) => {
+        try {
+          this.logger.debug('IPC task-store:uninstall-task called');
+          return await this.taskStoreService!.uninstallTask(taskId);
+        } catch (error) {
+          this.logger.error('IPC task-store:uninstall-task error:', error);
+          throw error;
+        }
+      });
+
+      // Task Dependencies IPC handlers
+      ipcMain.handle('task-manager:check-dependencies', async (event, taskId) => {
+        try {
+          this.logger.debug(`IPC task-manager:check-dependencies called for: ${taskId}`);
+          return await this.taskManager!.checkTaskDependencies(taskId);
+        } catch (error) {
+          this.logger.error('IPC task-manager:check-dependencies error:', error);
+          throw error;
+        }
+      });
+
+      ipcMain.handle('task-manager:install-dependencies', async (event, request) => {
+        try {
+          this.logger.debug('IPC task-manager:install-dependencies called');
+          return await this.taskManager!.installTaskDependencies(request);
+        } catch (error) {
+          this.logger.error('IPC task-manager:install-dependencies error:', error);
+          throw error;
+        }
+      });
+
+      ipcMain.handle('task-manager:get-dependency-summary', async () => {
+        try {
+          this.logger.debug('IPC task-manager:get-dependency-summary called');
+          return await this.taskManager!.getDependencySummary();
+        } catch (error) {
+          this.logger.error('IPC task-manager:get-dependency-summary error:', error);
+          throw error;
+        }
+      });
+
+      ipcMain.handle('task-manager:cleanup-dependencies', async () => {
+        try {
+          this.logger.debug('IPC task-manager:cleanup-dependencies called');
+          await this.taskManager!.cleanupAllDependencies();
+          return { success: true };
+        } catch (error) {
+          this.logger.error('IPC task-manager:cleanup-dependencies error:', error);
+          throw error;
+        }
+      });
+
+      ipcMain.handle('task-store:get-store-stats', async () => {
+        try {
+          this.logger.debug('IPC task-store:get-store-stats called');
+          return await this.taskStoreService!.getStoreStats();
+        } catch (error) {
+          this.logger.error('IPC task-store:get-store-stats error:', error);
+          throw error;
+        }
+      });
+
+      ipcMain.handle('task-store:check-for-updates', async () => {
+        try {
+          this.logger.debug('IPC task-store:check-for-updates called');
+          return await this.taskStoreService!.checkForUpdates();
+        } catch (error) {
+          this.logger.error('IPC task-store:check-for-updates error:', error);
+          throw error;
         }
       });
 

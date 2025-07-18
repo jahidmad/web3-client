@@ -114,13 +114,35 @@
                 >
                   <option value="">请选择</option>
                   <option 
-                    v-for="option in param.validation?.options" 
+                    v-for="option in param.options" 
                     :key="option.value"
                     :value="option.value"
                   >
                     {{ option.label }}
                   </option>
                 </select>
+                
+                <!-- 多选框 -->
+                <div 
+                  v-else-if="param.type === 'multiselect'"
+                  class="multiselect-container"
+                >
+                  <div 
+                    v-for="option in param.options" 
+                    :key="option.value"
+                    class="multiselect-option"
+                  >
+                    <label class="checkbox-label">
+                      <input 
+                        type="checkbox"
+                        :value="option.value"
+                        v-model="parameters[param.name]"
+                        class="param-checkbox"
+                      />
+                      <span>{{ option.label }}</span>
+                    </label>
+                  </div>
+                </div>
                 
                 <!-- 文本域 -->
                 <textarea 
@@ -233,7 +255,13 @@ onMounted(() => {
   // 初始化参数默认值
   if (props.task.parameters) {
     props.task.parameters.forEach(param => {
-      if (param.defaultValue !== undefined) {
+      if (param.type === 'multiselect') {
+        // 初始化多选参数为空数组或默认值数组
+        parameters.value[param.name] = param.default || []
+      } else if (param.default !== undefined) {
+        parameters.value[param.name] = param.default
+      } else if (param.defaultValue !== undefined) {
+        // 兼容旧的 defaultValue 字段
         parameters.value[param.name] = param.defaultValue
       }
     })
@@ -531,5 +559,24 @@ onMounted(() => {
 .btn-secondary:hover:not(:disabled) {
   background-color: #64748b;
   border-color: #94a3b8;
+}
+
+.multiselect-container {
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 8px;
+  background-color: #0f172a;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.multiselect-option {
+  padding: 4px 0;
+}
+
+.multiselect-option:not(:last-child) {
+  border-bottom: 1px solid #334155;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
 }
 </style>
