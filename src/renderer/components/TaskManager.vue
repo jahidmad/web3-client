@@ -23,13 +23,6 @@
             任务商店
           </button>
           <button 
-            :class="['view-btn', { active: activeTab === 'dependencies' }]"
-            @click="activeTab = 'dependencies'"
-          >
-            <span class="icon">📦</span>
-            依赖管理
-          </button>
-          <button 
             :class="['view-btn', { active: activeTab === 'executions' }]"
             @click="activeTab = 'executions'"
           >
@@ -55,24 +48,6 @@
           />
         </div>
       </div>
-    </div>
-
-    <!-- 浏览器选择 -->
-    <div class="browser-selector">
-      <div class="selector-label">
-        <span class="icon">🌐</span>
-        执行浏览器:
-      </div>
-      <select v-model="selectedBrowser" class="browser-select">
-        <option value="">请选择浏览器</option>
-        <option 
-          v-for="browser in browsers" 
-          :key="browser.id"
-          :value="browser.id"
-        >
-          {{ browser.name }} ({{ getBrowserStatusText(browser.status) }})
-        </option>
-      </select>
     </div>
 
     <!-- 任务列表 -->
@@ -162,7 +137,6 @@
             <button 
               class="btn-success btn-sm"
               @click="showExecuteTask(task)"
-              :disabled="!selectedBrowser"
               title="执行任务"
             >
               <span class="icon">▶️</span>
@@ -205,115 +179,6 @@
     <!-- 任务商店 -->
     <div v-if="activeTab === 'store'" class="content-section">
       <TaskStore />
-    </div>
-
-    <!-- 依赖管理 -->
-    <div v-if="activeTab === 'dependencies'" class="content-section">
-      <div class="section-header">
-        <h3>依赖管理</h3>
-        <div class="dependency-actions">
-          <button class="btn-secondary" @click="loadDependencySummary">
-            <span class="icon">🔄</span>
-            刷新状态
-          </button>
-          <button class="btn-danger" @click="cleanupAllDependencies">
-            <span class="icon">🧹</span>
-            清理所有依赖
-          </button>
-        </div>
-      </div>
-
-      <!-- 依赖概览 -->
-      <div class="dependency-summary" v-if="dependencySummary">
-        <div class="summary-cards">
-          <div class="summary-card">
-            <div class="card-icon">📦</div>
-            <div class="card-content">
-              <div class="card-title">总任务数</div>
-              <div class="card-value">{{ dependencySummary.totalTasks }}</div>
-            </div>
-          </div>
-          <div class="summary-card">
-            <div class="card-icon">🔗</div>
-            <div class="card-content">
-              <div class="card-title">有依赖的任务</div>
-              <div class="card-value">{{ dependencySummary.tasksWithDependencies }}</div>
-            </div>
-          </div>
-          <div class="summary-card success">
-            <div class="card-icon">✅</div>
-            <div class="card-content">
-              <div class="card-title">依赖满足</div>
-              <div class="card-value">{{ dependencySummary.satisfiedTasks }}</div>
-            </div>
-          </div>
-          <div class="summary-card warning">
-            <div class="card-icon">⚠️</div>
-            <div class="card-content">
-              <div class="card-title">依赖缺失</div>
-              <div class="card-value">{{ dependencySummary.unsatisfiedTasks }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 任务依赖详情 -->
-      <div class="tasks-dependencies">
-        <div 
-          v-for="task in tasksWithDependencies" 
-          :key="task.id"
-          class="task-dependency-card"
-        >
-          <div class="task-header">
-            <div class="task-info">
-              <h4>{{ task.metadata.name }}</h4>
-              <p class="task-version">v{{ task.metadata.version }}</p>
-            </div>
-            <div class="dependency-status">
-              <span 
-                :class="['status-badge', task.dependencyStatus?.satisfied ? 'success' : 'warning']"
-              >
-                {{ task.dependencyStatus?.satisfied ? '✅ 已满足' : '⚠️ 未满足' }}
-              </span>
-            </div>
-          </div>
-          
-          <div class="dependencies-list" v-if="task.metadata.dependencies">
-            <h5>依赖列表：</h5>
-            <div class="dependency-items">
-              <div 
-                v-for="dep in task.metadata.dependencies" 
-                :key="dep.name"
-                class="dependency-item"
-              >
-                <div class="dep-info">
-                  <span class="dep-name">{{ dep.name }}</span>
-                  <span class="dep-version">{{ dep.version }}</span>
-                  <span class="dep-type">{{ dep.type }}</span>
-                </div>
-                <div class="dep-status">
-                  <span 
-                    :class="['dep-status-badge', getDependencyStatus(task, dep.name)]"
-                  >
-                    {{ getDependencyStatusText(task, dep.name) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="task-actions" v-if="task.dependencyStatus && !task.dependencyStatus.satisfied">
-            <button 
-              class="btn-primary"
-              @click="installTaskDependencies(task.id)"
-              :disabled="installingDependencies.has(task.id)"
-            >
-              <span class="icon">📦</span>
-              {{ installingDependencies.has(task.id) ? '安装中...' : '安装依赖' }}
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- 执行历史 -->
@@ -380,7 +245,6 @@
       </div>
     </div>
 
-
     <!-- 导入任务模态框 -->
     <ImportTaskModal 
       v-if="showImportTask"
@@ -388,7 +252,7 @@
       @imported="handleTaskImported"
     />
 
-    <!-- 执行任务模态框 -->
+    <!-- 执行任务模态框，保留浏览器选择 -->
     <ExecuteTaskModal 
       v-if="showExecuteTaskModal"
       :task="executingTask"
@@ -402,7 +266,6 @@
       v-if="showTaskDetails"
       :task="selectedTask"
       @close="showTaskDetails = false"
-      @install="handleDependencyInstall"
     />
 
     <!-- 删除确认模态框 -->
@@ -429,16 +292,11 @@ import ConfirmDeleteModal from './modals/ConfirmDeleteModal.vue'
 import TaskStore from './TaskStore.vue'
 
 // 响应式数据
-const activeTab = ref<'tasks' | 'store' | 'dependencies' | 'executions'>('tasks')
+const activeTab = ref<'tasks' | 'store' | 'executions'>('tasks')
 const tasks = ref<LocalTask[]>([])
 const executions = ref<TaskExecution[]>([])
 const browsers = ref<Browser[]>([])
-const selectedBrowser = ref<string>('')
 const fileInput = ref<HTMLInputElement | null>(null)
-
-// 依赖管理相关状态
-const dependencySummary = ref<any>(null)
-const installingDependencies = ref<Set<string>>(new Set())
 
 // 过滤条件
 const taskSearchQuery = ref('')
@@ -478,12 +336,6 @@ const filteredTasks = computed(() => {
   return filtered
 })
 
-const tasksWithDependencies = computed(() => {
-  return tasks.value.filter(task => 
-    task.metadata.dependencies && task.metadata.dependencies.length > 0
-  )
-})
-
 const filteredExecutions = computed(() => {
   let filtered = executions.value
 
@@ -521,16 +373,6 @@ const loadBrowsers = async () => {
   try {
     const result = await window.electronAPI.browser.getBrowsers()
     browsers.value = result || []
-    // 自动选择浏览器：优先选择正在运行的，否则选择第一个可用的
-    if (!selectedBrowser.value && browsers.value.length > 0) {
-      const runningBrowser = browsers.value.find(b => b.status === 'running')
-      if (runningBrowser) {
-        selectedBrowser.value = runningBrowser.id
-      } else {
-        // 如果没有正在运行的浏览器，选择第一个可用的浏览器
-        selectedBrowser.value = browsers.value[0].id
-      }
-    }
   } catch (error) {
     console.error('Failed to load browsers:', error)
   }
@@ -569,8 +411,9 @@ const handleFileUpload = async (event: Event) => {
   }
 }
 
-const showExecuteTask = (task: LocalTask) => {
+const showExecuteTask = async (task: LocalTask) => {
   executingTask.value = task
+  await loadBrowsers()
   showExecuteTaskModal.value = true
 }
 
@@ -619,83 +462,6 @@ const handleTaskExecuted = async () => {
   activeTab.value = 'executions'
 }
 
-const handleDependencyInstall = async (task: LocalTask) => {
-  // Refresh task data after dependency installation
-  await loadTasks()
-  await loadDependencySummary()
-}
-
-// 依赖管理相关方法
-const loadDependencySummary = async () => {
-  try {
-    dependencySummary.value = await window.electronAPI.taskManager.getDependencySummary()
-  } catch (error) {
-    console.error('Failed to load dependency summary:', error)
-  }
-}
-
-const installTaskDependencies = async (taskId: string) => {
-  try {
-    const task = tasks.value.find(t => t.id === taskId)
-    if (!task?.metadata.dependencies) {
-      return
-    }
-
-    installingDependencies.value.add(taskId)
-    
-    const result = await window.electronAPI.taskManager.installDependencies({
-      taskId,
-      dependencies: task.metadata.dependencies
-    })
-    
-    if (result.success) {
-      // 重新加载任务和依赖摘要
-      await loadTasks()
-      await loadDependencySummary()
-    }
-  } catch (error) {
-    console.error('Failed to install dependencies:', error)
-  } finally {
-    installingDependencies.value.delete(taskId)
-  }
-}
-
-const cleanupAllDependencies = async () => {
-  if (!confirm('确定要清理所有任务依赖吗？这将删除所有已安装的依赖包。')) {
-    return
-  }
-  
-  try {
-    await window.electronAPI.taskManager.cleanupDependencies()
-    await loadTasks()
-    await loadDependencySummary()
-  } catch (error) {
-    console.error('Failed to cleanup dependencies:', error)
-  }
-}
-
-const getDependencyStatus = (task: any, depName: string): string => {
-  if (!task.dependencyStatus) return 'unknown'
-  
-  const depStatus = task.dependencyStatus.dependencies.find((d: any) => d.name === depName)
-  if (!depStatus) return 'unknown'
-  
-  if (depStatus.installed && depStatus.compatible) return 'success'
-  if (depStatus.installed && !depStatus.compatible) return 'warning'
-  return 'error'
-}
-
-const getDependencyStatusText = (task: any, depName: string): string => {
-  const status = getDependencyStatus(task, depName)
-  const statusMap = {
-    success: '✅ 已安装',
-    warning: '⚠️ 版本不兼容',
-    error: '❌ 未安装',
-    unknown: '❓ 未知'
-  }
-  return statusMap[status] || '❓ 未知'
-}
-
 const getTaskName = (taskId: string): string => {
   const task = tasks.value.find(t => t.id === taskId)
   return task?.metadata.name || 'Unknown Task'
@@ -703,15 +469,6 @@ const getTaskName = (taskId: string): string => {
 
 const formatDate = (date: Date | string): string => {
   return new Date(date).toLocaleString('zh-CN')
-}
-
-const getBrowserStatusText = (status: string): string => {
-  const statusMap: Record<string, string> = {
-    running: '运行中',
-    stopped: '已停止',
-    error: '错误'
-  }
-  return statusMap[status] || status
 }
 
 const getTaskStatusText = (status: string): string => {
@@ -733,7 +490,6 @@ const getExecutionStatusText = (status: string): string => {
   return statusMap[status] || status
 }
 
-
 const getDuration = (start: Date | string, end: Date | string): string => {
   const startTime = new Date(start).getTime()
   const endTime = new Date(end).getTime()
@@ -752,8 +508,6 @@ const getDuration = (start: Date | string, end: Date | string): string => {
 onMounted(() => {
   loadTasks()
   loadExecutions()
-  loadBrowsers()
-  loadDependencySummary()
 })
 </script>
 

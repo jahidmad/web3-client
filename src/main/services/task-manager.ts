@@ -1819,7 +1819,7 @@ export class TaskManager extends EventEmitter {
     let taskFunction;
     try {
       taskFunction = new Function(
-        'taskBrowser', 'taskPage', 'taskParams', 'taskLog', 'taskProgress', 'taskUtils',
+        'taskBrowser', 'taskPage', 'taskParams', 'taskLog', 'taskProgress', 'taskUtils', 'taskRequire',
         functionBody
       );
     } catch (syntaxError) {
@@ -1838,6 +1838,13 @@ export class TaskManager extends EventEmitter {
       
       throw new Error(`Failed to create task function: ${errorMessage}. Check ${debugPath} for details.`);
     }
+
+    const dpath = this.dependencyManager.getDependenciesPath()
+    const customRequire = (moduleName: string) => {
+      return require(require.resolve(moduleName, {
+        paths: [path.join(dpath, 'node_modules')]
+      }));
+    }
     
     return await taskFunction(
       context.browser, 
@@ -1845,7 +1852,8 @@ export class TaskManager extends EventEmitter {
       context.parameters, 
       context.log, 
       context.progress, 
-      context.utils
+      context.utils,
+      customRequire,
     );
   }
 
