@@ -13,6 +13,7 @@ import { BrowserManagerAdapter } from '../adapters/browser-adapter';
 import { DatabaseExecutionStorageAdapter } from '../adapters/execution-storage-adapter';
 import { DatabaseExecutionLoggerAdapter } from '../adapters/execution-logger-adapter';
 import { ResultCacheManager } from './result-cache-manager';
+import { Logger } from '../utils/logger';
 import { 
   Task, 
   ExecutionRequest, 
@@ -21,6 +22,7 @@ import {
   TaskError,
   ErrorCode
 } from '../../shared/types/plugin-task-system';
+import { BrowserStatus } from '../types/browser';
 
 /**
  * Task Execution Service - Main service for executing plugin tasks
@@ -30,10 +32,12 @@ export class TaskExecutionService {
   private browserManager: BrowserManager;
   private prisma: PrismaClient;
   private resultCache: ResultCacheManager;
+  private logger: Logger;
 
   constructor(browserManager: BrowserManager, prisma: PrismaClient) {
     this.browserManager = browserManager;
     this.prisma = prisma;
+    this.logger = new Logger('TaskExecutionService');
     
     // Create the browser adapter
     const browserAdapter = new BrowserManagerAdapter(browserManager);
@@ -63,7 +67,7 @@ export class TaskExecutionService {
     // Initialize the result cache manager
     await this.resultCache.initialize();
     
-    console.log('[TaskExecutionService] Initialized');
+    this.logger.info('TaskExecutionService initialized successfully');
   }
 
   /**
@@ -77,6 +81,11 @@ export class TaskExecutionService {
       // Validate the execution request
       this.validateExecutionRequest(request, task);
       
+      // Check browser status and start if needed
+      if (request.browserId) {
+        await this.ensureBrowserRunning(request.browserId);
+      }
+      
       // Execute the task using the execution engine
       const execution = await this.executionEngine.executeTask(request, task);
       
@@ -86,7 +95,7 @@ export class TaskExecutionService {
           // Cache the execution result
           await this.resultCache.cacheExecution(execution);
         } catch (cacheError) {
-          console.error('[TaskExecutionService] Failed to cache execution result:', cacheError);
+          this.logger.error('Failed to cache execution result', cacheError);
           // Continue execution even if caching fails
         }
       }
@@ -220,6 +229,160 @@ export class TaskExecutionService {
         return Array.isArray(value);
       default:
         return true; // Unknown types are allowed
+    }
+  }
+
+  /**
+   * Get browser by ID
+   */
+  private getBrowserById(browserId: string) {
+    const browser = this.browserManager.getBrowser(browserId);
+    if (!browser) {
+      this.logger.error(`Browser not found: ${browserId}`, null, { browserId });
+      
+      throw new TaskError(
+        ErrorCode.BROWSER_NOT_FOUND,
+        `找不到指定的浏览器 (ID: ${browserId})。请检查浏览器配置或选择其他可用的浏览器。`,
+        { browserId }
+      );
+    }
+    return browser;
+  }
+
+  /**
+   * Get browser status
+   * Returns the current status of the specified browser
+   */
+  async getBrowserStatus(browserId: string): Promise<BrowserStatus> {
+    try {
+      // Validate that the browser exists
+      const browser = this.getBrowserById(browserId);
+      this.logger.debug(`Getting status for browser: ${browserId} (${browser.name})`);
+      
+      // Get the current status from browser manager
+      const status = await this.browserManager.getBrowserStatus(browserId);
+      this.logger.debug(`Browser ${browserId} status: ${status}`);
+      
+      return status;
+    } catch (error) {
+      if (error instanceof TaskError) {
+        // Log the error for debugging but re-throw as-is
+        this.logger.error(
+          `Failed to get browser status for ${browserId}`,
+          error,
+          { browserId }
+        );
+        throw error;
+      }
+      
+      // Handle unexpected errors
+      this.logger.error(
+        `Unexpected error getting browser status for ${browserId}`,
+        error,
+        { browserId }
+      );
+      
+      throw new TaskError(
+        ErrorCode.BROWSER_NOT_FOUND,
+        `获取浏览器状态时发生错误。请确认浏览器配置正确。错误详情: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          browserId,
+          originalError: error instanceof Error ? error.message : String(error)
+        }
+      );
+    }
+  }
+
+  /**
+   * Ensure browser is running, start it if needed
+   */
+  private async ensureBrowserRunning(browserId: string): Promise<void> {
+    try {
+      // Get browser information
+      const browser = this.getBrowserById(browserId);
+      this.logger.debug(`Checking browser status for browser: ${browserId} (${browser.name})`);
+      
+      // Check current browser status
+      const currentStatus = await this.browserManager.getBrowserStatus(browserId);
+      this.logger.debug(`Browser ${browserId} current status: ${currentStatus}`);
+      
+      // If browser is not running, start it
+      if (currentStatus !== 'running') {
+        this.logger.info(`Browser ${browserId} (${browser.name}) is ${currentStatus}, attempting to start...`);
+        
+        const result = await this.browserManager.openBrowser(browserId);
+        
+        if (!result.success) {
+          const errorMessage = result.error || 'Unknown error occurred during browser startup';
+          
+          // Log detailed error information
+          this.logger.error(
+            `Failed to start browser ${browserId} (${browser.name})`,
+            new Error(errorMessage),
+            {
+              browserId,
+              browserName: browser.name,
+              browserPlatform: browser.platform,
+              currentStatus,
+              errorDetails: result.error
+            }
+          );
+          
+          // Create user-friendly error message with guidance
+          let userFriendlyMessage = `无法启动浏览器 "${browser.name}"`;
+          
+          // Add specific guidance based on error type
+          if (errorMessage.toLowerCase().includes('permission')) {
+            userFriendlyMessage += '。请检查浏览器权限设置，确保应用有权限启动浏览器。';
+          } else if (errorMessage.toLowerCase().includes('not found') || errorMessage.toLowerCase().includes('path')) {
+            userFriendlyMessage += '。请确认浏览器已正确安装，并且路径配置正确。';
+          } else if (errorMessage.toLowerCase().includes('port') || errorMessage.toLowerCase().includes('address')) {
+            userFriendlyMessage += '。浏览器端口可能被占用，请尝试重启应用或检查端口冲突。';
+          } else if (errorMessage.toLowerCase().includes('timeout')) {
+            userFriendlyMessage += '。浏览器启动超时，请检查系统资源或尝试重启浏览器。';
+          } else {
+            userFriendlyMessage += `。错误详情: ${errorMessage}`;
+          }
+          
+          userFriendlyMessage += ' 您可以尝试手动启动浏览器，或选择其他可用的浏览器执行任务。';
+          
+          throw new TaskError(
+            ErrorCode.BROWSER_START_FAILED,
+            userFriendlyMessage,
+            {
+              browserId,
+              browserName: browser.name,
+              originalError: errorMessage,
+              currentStatus
+            }
+          );
+        }
+        
+        this.logger.info(`Browser ${browserId} (${browser.name}) started successfully`);
+      } else {
+        this.logger.debug(`Browser ${browserId} (${browser.name}) is already running`);
+      }
+    } catch (error) {
+      if (error instanceof TaskError) {
+        // Re-throw TaskError as-is (already has proper logging and user-friendly message)
+        throw error;
+      }
+      
+      // Handle unexpected errors
+      this.logger.error(
+        `Unexpected error while ensuring browser ${browserId} is running`,
+        error,
+        { browserId }
+      );
+      
+      throw new TaskError(
+        ErrorCode.BROWSER_START_FAILED,
+        `检查浏览器状态时发生意外错误。请重试或联系技术支持。错误详情: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          browserId,
+          originalError: error instanceof Error ? error.message : String(error)
+        }
+      );
     }
   }
 }

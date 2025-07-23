@@ -40,15 +40,19 @@
             >
               <option value="">请选择浏览器</option>
               <option 
-                v-for="browser in runningBrowsers" 
+                v-for="browser in availableBrowsers" 
                 :key="browser.id"
                 :value="browser.id"
+                :class="{ 'browser-stopped': browser.status !== 'running' }"
               >
                 {{ browser.name }} ({{ getBrowserStatusText(browser.status) }})
               </option>
             </select>
-            <p class="form-hint" v-if="runningBrowsers.length === 0">
-              没有正在运行的浏览器，请先启动浏览器
+            <p class="form-hint" v-if="availableBrowsers.length === 0">
+              没有可用的浏览器，请先创建浏览器实例
+            </p>
+            <p class="form-hint" v-else-if="selectedBrowser && getBrowserStatus(selectedBrowser) !== 'running'">
+              ⚠️ 所选浏览器未运行，系统将自动启动该浏览器
             </p>
           </div>
 
@@ -205,15 +209,18 @@ const selectedBrowser = ref('')
 const executing = ref(false)
 const parameters = ref<Record<string, any>>({})
 
-const runningBrowsers = computed(() => {
-  return props.browsers.filter(browser => browser.status === 'running')
+const availableBrowsers = computed(() => {
+  // 返回所有浏览器，不再过滤只显示运行中的浏览器
+  return props.browsers
 })
 
 const getBrowserStatusText = (status: string): string => {
   const statusMap: Record<string, string> = {
-    running: '运行中',
-    stopped: '已停止',
-    error: '错误'
+    running: '✅ 运行中',
+    stopped: '⏸️ 已停止',
+    starting: '🔄 启动中',
+    stopping: '⏹️ 停止中',
+    error: '❌ 错误'
   }
   return statusMap[status] || status
 }
@@ -246,10 +253,18 @@ const executeTask = async () => {
   }
 }
 
+const getBrowserStatus = (browserId: string): string => {
+  const browser = props.browsers.find(b => b.id === browserId)
+  return browser?.status || 'unknown'
+}
+
 onMounted(() => {
-  // 自动选择第一个运行中的浏览器
-  if (runningBrowsers.value.length > 0) {
-    selectedBrowser.value = runningBrowsers.value[0].id
+  // 优先选择运行中的浏览器，如果没有则选择第一个可用的浏览器
+  const runningBrowser = availableBrowsers.value.find(browser => browser.status === 'running')
+  if (runningBrowser) {
+    selectedBrowser.value = runningBrowser.id
+  } else if (availableBrowsers.value.length > 0) {
+    selectedBrowser.value = availableBrowsers.value[0].id
   }
   
   // 初始化参数默认值
@@ -578,5 +593,17 @@ onMounted(() => {
   border-bottom: 1px solid #334155;
   padding-bottom: 8px;
   margin-bottom: 4px;
+}
+
+/* 浏览器状态样式 */
+.browser-stopped {
+  color: #fbbf24 !important;
+  font-style: italic;
+}
+
+.form-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 </style>
