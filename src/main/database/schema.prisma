@@ -99,7 +99,7 @@ model TaskExecution {
   progressTotal      Int?     // 总动作数
   variables          String?  // JSON string - 执行时的变量
   
-  task        Task     @relation(fields: [taskId], references: [id])
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   browser     Browser  @relation(fields: [browserId], references: [id])
 }
 
@@ -117,7 +117,7 @@ model TaskSchedule {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
-  task        Task     @relation(fields: [taskId], references: [id])
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 }
 
 model AccountGroup {

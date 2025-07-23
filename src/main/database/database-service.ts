@@ -29,6 +29,10 @@ export class DatabaseService {
   async initialize(): Promise<void> {
     try {
       await this.prisma.$connect();
+      
+      // 启用 SQLite 外键约束
+      await this.prisma.$executeRaw`PRAGMA foreign_keys = ON`;
+      
       this.logger.info('Database connected successfully');
       
       // 检查并确保表存在
