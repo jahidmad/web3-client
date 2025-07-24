@@ -81,6 +81,10 @@ export class TaskFileValidator {
         min: 1,
         max: 10,
         default: 5
+      },
+      restoreBrowserState: {
+        type: 'boolean',
+        default: true
       }
     };
   }

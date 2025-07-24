@@ -29,6 +29,7 @@ export interface BrowserConfig {
   extensions?: string[];
   headless?: boolean;
   group?: string;
+  autoClose?: boolean;  // 任务执行完毕后是否自动关闭浏览器 (默认: true)
 }
 
 export interface LocalBrowserConfig extends BrowserConfig {

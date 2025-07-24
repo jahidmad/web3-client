@@ -216,6 +216,31 @@ export class BrowserManager {
     return this.browsers.get(browserId);
   }
 
+  /**
+   * 获取浏览器实例
+   */
+  async getBrowserInstance(browserId: string): Promise<any | null> {
+    const browser = this.browsers.get(browserId);
+    if (!browser) {
+      return null;
+    }
+
+    const platform = this.platforms.get(browser.platform);
+    if (!platform) {
+      return null;
+    }
+
+    // 如果是本地浏览器平台，获取浏览器实例
+    if (platform.platformType === 'local') {
+      const localPlatform = platform as any;
+      if (localPlatform.getBrowserInstance) {
+        return localPlatform.getBrowserInstance(browserId);
+      }
+    }
+
+    return null;
+  }
+
   async getBrowserStatus(browserId: string): Promise<BrowserStatus> {
     try {
       const browser = this.browsers.get(browserId);

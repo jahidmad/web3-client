@@ -105,6 +105,7 @@ export interface TaskConfig {
   priority?: number;               // Task execution priority (1-10)
   cacheable?: boolean;             // Whether task results can be cached
   cacheTtl?: number;               // Time-to-live for cached results in milliseconds (0 = no expiration)
+  restoreBrowserState?: boolean;   // Whether to restore browser initial state after execution (default: true)
 }
 
 /**

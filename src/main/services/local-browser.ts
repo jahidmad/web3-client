@@ -363,6 +363,14 @@ export class LocalBrowser implements IBrowserPlatform {
     return this.browsers.size;
   }
 
+  /**
+   * 获取浏览器实例
+   */
+  public getBrowserInstance(browserId: string): any | null {
+    const browserData = this.browsers.get(browserId);
+    return browserData?.browser || null;
+  }
+
   public getRunningBrowsers(): string[] {
     return Array.from(this.browsers.entries())
       .filter(([_, data]) => data.status === 'running')

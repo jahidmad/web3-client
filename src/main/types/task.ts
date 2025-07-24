@@ -70,6 +70,15 @@ export interface TaskFile {
   metadata: TaskMetadata;
   parameters: TaskParameter[];
   code: string; // 任务执行代码
+  config?: {
+    timeout?: number;
+    retries?: number;
+    permissions?: string[];
+    maxMemory?: number;
+    concurrent?: boolean;
+    priority?: number;
+    restoreBrowserState?: boolean;
+  };
   examples?: Array<{
     name: string;
     description: string;

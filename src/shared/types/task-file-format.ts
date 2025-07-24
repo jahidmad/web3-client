@@ -226,6 +226,10 @@ export interface TaskConfigSchema {
     max: 10;                       // Highest priority
     default: 5;                    // Normal priority
   };
+  restoreBrowserState: {
+    type: 'boolean';
+    default: true;                 // Restore browser state by default
+  };
 }
 
 // ============================================================================

@@ -179,9 +179,10 @@ export class BrowserExecutionEnvironment implements ExecutionEnvironment {
    */
   async cleanup(context: ExecutionContext): Promise<void> {
     try {
-      // Close the page
+      // Simply close the page - browser state restoration is handled by TaskManager
       if (context.page) {
         await context.page.close();
+        console.log('Page closed successfully');
       }
     } catch (error) {
       console.error('Error during execution cleanup:', error);

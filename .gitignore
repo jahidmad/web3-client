@@ -119,6 +119,7 @@ junit.xml
 # Local development
 .local
 .history/
+output/
 
 # Error screenshots
 screenshots/
