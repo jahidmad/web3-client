@@ -1554,6 +1554,8 @@ export class TaskManager extends EventEmitter {
   ): Promise<void> {
     let page: any = null;
     let taskFile: TaskFile | null = null;
+    let wasInitiallyRunning = false;
+    let initialTabCount = 0;
     
     try {
       execution.status = 'running';
@@ -1565,9 +1567,21 @@ export class TaskManager extends EventEmitter {
         throw new Error(`Browser not found: ${execution.browserId}`);
       }
 
+      // 记录浏览器初始状态
+      wasInitiallyRunning = browser.status === 'running';
+      this.logger.debug(`Browser ${execution.browserId} initial state: ${wasInitiallyRunning ? 'running' : 'stopped'}`);
+
       // 如果浏览器未运行，启动它
       if (browser.status !== 'running') {
         await this.browserManager.openBrowser(execution.browserId);
+      }
+
+      // 记录初始标签页数量
+      const browserInstance = await this.browserManager.getBrowserInstance(execution.browserId);
+      if (browserInstance) {
+        const initialPages = await browserInstance.pages();
+        initialTabCount = initialPages.length;
+        this.logger.debug(`Browser ${execution.browserId} initial tab count: ${initialTabCount}`);
       }
 
       // 获取页面实例
@@ -1594,7 +1608,7 @@ export class TaskManager extends EventEmitter {
       
       // 恢复浏览器初始状态（如果配置启用）
       if (taskFile.config?.restoreBrowserState !== false) {
-        await this.restoreBrowserInitialState(execution.browserId, page);
+        await this.restoreBrowserInitialState(execution.browserId, page, wasInitiallyRunning, initialTabCount);
       }
       
       // 保存执行记录到数据库
@@ -1620,7 +1634,7 @@ export class TaskManager extends EventEmitter {
       // 无论成功还是失败，都尝试恢复浏览器状态（如果配置启用）
       try {
         if (execution.browserId && page && taskFile && taskFile.config?.restoreBrowserState !== false) {
-          await this.restoreBrowserInitialState(execution.browserId, page);
+          await this.restoreBrowserInitialState(execution.browserId, page, wasInitiallyRunning, initialTabCount);
         }
       } catch (restoreError) {
         this.logger.warn(`Failed to restore browser initial state: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`);
@@ -1648,9 +1662,9 @@ export class TaskManager extends EventEmitter {
   /**
    * 恢复浏览器初始状态
    */
-  private async restoreBrowserInitialState(browserId: string, page: any): Promise<void> {
+  private async restoreBrowserInitialState(browserId: string, page: any, wasInitiallyRunning: boolean, initialTabCount: number): Promise<void> {
     try {
-      this.logger.info(`Restoring browser initial state for: ${browserId}`);
+      this.logger.info(`Restoring browser initial state for: ${browserId} (was initially ${wasInitiallyRunning ? 'running' : 'stopped'}, had ${initialTabCount} tabs)`);
       
       // 获取浏览器信息
       const browser = this.browserManager.getBrowser(browserId);
@@ -1659,29 +1673,62 @@ export class TaskManager extends EventEmitter {
         return;
       }
       
-      // 1. 关闭任务执行过程中打开的标签页（除了主页面）
+      // 1. 关闭任务执行过程中打开的标签页（除了任务执行页面）
       const browserInstance = await this.browserManager.getBrowserInstance(browserId);
       if (browserInstance) {
         const pages = await browserInstance.pages();
-        // 保留第一个页面（主页面），关闭其他页面
-        for (let i = 1; i < pages.length; i++) {
-          try {
-            await pages[i].close();
-            this.logger.debug(`Closed additional tab ${i} for browser ${browserId}`);
-          } catch (error) {
-            this.logger.warn(`Failed to close tab ${i} for browser ${browserId}:`, error);
+        this.logger.info(`Browser ${browserId} now has ${pages.length} tabs open (initially had ${initialTabCount})`);
+        
+        // 找到任务执行页面（当前page）
+        let taskPageIndex = -1;
+        for (let i = 0; i < pages.length; i++) {
+          if (pages[i] === page) {
+            taskPageIndex = i;
+            break;
           }
         }
+        
+        this.logger.info(`Task execution page found at index: ${taskPageIndex}`);
+        
+        // 关闭除了任务执行页面之外的所有其他页面
+        let closedCount = 0;
+        for (let i = pages.length - 1; i >= 0; i--) {
+          if (i !== taskPageIndex && pages[i] !== page) {
+            try {
+              await pages[i].close();
+              closedCount++;
+              this.logger.info(`Closed tab ${i} for browser ${browserId}`);
+            } catch (error) {
+              this.logger.warn(`Failed to close tab ${i} for browser ${browserId}:`, error);
+            }
+          }
+        }
+        
+        if (closedCount > 0) {
+          this.logger.info(`Closed ${closedCount} additional tabs for browser ${browserId}`);
+        } else {
+          this.logger.info(`Browser ${browserId} has no additional tabs to close`);
+        }
+        
+        // 将任务执行页面导航回空白页面，恢复初始状态
+        if (page && wasInitiallyRunning) {
+          try {
+            await page.goto('about:blank', { waitUntil: 'load' });
+            this.logger.info(`Reset task execution page to blank for browser ${browserId}`);
+          } catch (error) {
+            this.logger.warn(`Failed to reset page to blank for browser ${browserId}:`, error);
+          }
+        }
+      } else {
+        this.logger.warn(`Could not get browser instance for ${browserId}, skipping tab cleanup`);
       }
       
-      // 2. 如果浏览器初始状态是关闭的，就关闭浏览器
-      // 检查浏览器配置中是否有初始状态信息
-      const shouldCloseBrowser = browser.config?.autoClose !== false; // 默认关闭
-      if (shouldCloseBrowser) {
-        this.logger.info(`Closing browser ${browserId} as it should return to closed state`);
+      // 2. 只有初始状态为关闭的浏览器才关闭
+      if (!wasInitiallyRunning) {
+        this.logger.info(`Closing browser ${browserId} as it was initially stopped`);
         await this.browserManager.closeBrowser(browserId);
       } else {
-        this.logger.info(`Keeping browser ${browserId} open as configured`);
+        this.logger.info(`Keeping browser ${browserId} open as it was initially running`);
       }
       
       this.logger.info(`Browser initial state restored successfully for: ${browserId}`);
